@@ -1,0 +1,27 @@
+{
+  "name": "@mpf/orchestrator",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc -p tsconfig.json"
+  },
+  "dependencies": {
+    "@mpf/adapters": "workspace:*",
+    "@mpf/analyzer": "workspace:*",
+    "@mpf/core": "workspace:*",
+    "@mpf/critic": "workspace:*",
+    "@mpf/harness": "workspace:*",
+    "@mpf/llm": "workspace:*",
+    "@mpf/wasm-core": "workspace:*",
+    "pathe": "catalog:",
+    "zod": "catalog:"
+  },
+  "devDependencies": {
+    "typescript": "catalog:",
+    "vitest": "catalog:"
+  }
+}

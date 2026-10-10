@@ -1,0 +1,21 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Tea Shop</title>
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <header data-testid="mpf-root-header">
+      <h1 data-testid="app-title">Tea Shop</h1>
+      <nav>
+        <a href="#/" data-testid="nav-catalog">Catalog</a>
+        <a href="#/cart" data-testid="nav-cart">Cart (<span data-testid="cart-count">0</span>)</a>
+        <a href="#/checkout" data-testid="nav-checkout">Checkout</a>
+      </nav>
+    </header>
+    <main id="app" data-testid="mpf-root"></main>
+    <script type="module" src="main.js"></script>
+  </body>
+</html>

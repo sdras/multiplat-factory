@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Notes</string>
+    <string name="search_hint">Search notes</string>
+    <string name="add_note">New note</string>
+    <string name="empty_state">No notes yet. Tap New note to write one.</string>
+    <string name="new_note">New note</string>
+    <string name="edit_note">Edit note</string>
+    <string name="title_hint">Title</string>
+    <string name="body_hint">Write something</string>
+    <string name="save">Save</string>
+    <string name="delete">Delete note</string>
+</resources>

@@ -1,0 +1,58 @@
+:root {
+  color-scheme: light dark;
+  font-family: system-ui, sans-serif;
+}
+body {
+  margin: 0;
+  max-width: 420px;
+  padding: 24px;
+  margin-inline: auto;
+}
+header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+}
+nav a {
+  margin-left: 12px;
+  text-decoration: none;
+}
+nav a.active {
+  font-weight: 700;
+  text-decoration: underline;
+}
+.value {
+  font-size: 64px;
+  margin: 24px 0 0;
+  text-align: center;
+}
+.hint {
+  text-align: center;
+  opacity: 0.7;
+  margin: 4px 0 20px;
+}
+.actions {
+  display: flex;
+  gap: 8px;
+  justify-content: center;
+}
+button {
+  font-size: 18px;
+  padding: 10px 18px;
+  border-radius: 8px;
+  border: 1px solid currentColor;
+  background: transparent;
+  cursor: pointer;
+}
+button.secondary {
+  opacity: 0.7;
+}
+label {
+  display: block;
+  margin: 16px 0 6px;
+}
+input[type='number'] {
+  font-size: 18px;
+  padding: 8px;
+  width: 100px;
+}

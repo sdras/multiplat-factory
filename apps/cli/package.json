@@ -1,0 +1,69 @@
+{
+  "name": "@multiplat/factory",
+  "version": "0.1.0",
+  "description": "Port an app from web, iOS, or Android to the other platforms.",
+  "license": "Apache-2.0",
+  "type": "module",
+  "bin": {
+    "mpf": "./dist/main.js"
+  },
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "engines": {
+    "node": ">=22.13"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/multiplat/factory.git",
+    "directory": "apps/cli"
+  },
+  "homepage": "https://github.com/multiplat/factory#readme",
+  "keywords": [
+    "port",
+    "ios",
+    "android",
+    "web",
+    "swiftui",
+    "compose",
+    "wasm",
+    "claude",
+    "agent"
+  ],
+  "scripts": {
+    "build": "tsup && node scripts/bundle-dashboard.mjs",
+    "typecheck": "tsc -p tsconfig.json",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@anthropic-ai/claude-agent-sdk": "catalog:",
+    "@anthropic-ai/sdk": "catalog:",
+    "@hono/node-server": "catalog:",
+    "c12": "catalog:",
+    "citty": "catalog:",
+    "consola": "catalog:",
+    "defu": "catalog:",
+    "execa": "catalog:",
+    "hono": "catalog:",
+    "p-queue": "catalog:",
+    "pathe": "catalog:",
+    "playwright": "catalog:",
+    "tree-sitter-wasm": "catalog:",
+    "ulid": "catalog:",
+    "web-tree-sitter": "catalog:",
+    "zod": "catalog:"
+  },
+  "devDependencies": {
+    "@mpf/core": "workspace:*",
+    "@mpf/harness": "workspace:*",
+    "@mpf/orchestrator": "workspace:*",
+    "@mpf/server": "workspace:*",
+    "tsup": "catalog:",
+    "typescript": "catalog:",
+    "vitest": "catalog:"
+  }
+}

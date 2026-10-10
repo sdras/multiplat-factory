@@ -1,0 +1,32 @@
+{
+  "name": "@mpf/core",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts",
+    "./schemas": "./src/schemas/index.ts",
+    "./reducer": "./src/reducer.ts",
+    "./stages": "./src/stages/catalog.ts",
+    "./store": "./src/store/index.ts",
+    "./events": "./src/events/bus.ts",
+    "./config": "./src/config.ts",
+    "./paths": "./src/paths.ts",
+    "./cost": "./src/cost/prices.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc -p tsconfig.json"
+  },
+  "dependencies": {
+    "c12": "catalog:",
+    "defu": "catalog:",
+    "pathe": "catalog:",
+    "ulid": "catalog:",
+    "zod": "catalog:"
+  },
+  "devDependencies": {
+    "fast-check": "catalog:",
+    "typescript": "catalog:",
+    "vitest": "catalog:"
+  }
+}

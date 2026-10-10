@@ -1,0 +1,27 @@
+{
+  "name": "@mpf/analyzer",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc -p tsconfig.json"
+  },
+  "dependencies": {
+    "@mpf/adapters": "workspace:*",
+    "@mpf/core": "workspace:*",
+    "@mpf/harness": "workspace:*",
+    "@mpf/llm": "workspace:*",
+    "pathe": "catalog:",
+    "playwright": "catalog:",
+    "tree-sitter-wasm": "catalog:",
+    "web-tree-sitter": "catalog:",
+    "zod": "catalog:"
+  },
+  "devDependencies": {
+    "typescript": "catalog:",
+    "vitest": "catalog:"
+  }
+}

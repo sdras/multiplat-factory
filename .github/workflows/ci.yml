@@ -1,0 +1,123 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  checks:
+    name: lint, typecheck, tests, fake pipeline (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-15]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+      # The shared-core ABI test builds the crate template for wasm32 when cargo is present.
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm lint
+      - run: pnpm format:check
+      - run: pnpm typecheck
+      # The observe stage's Chromium; tests that need it skip otherwise, so install it to run them.
+      - run: pnpm --filter @mpf/analyzer exec playwright install --with-deps chromium
+      - run: pnpm test
+      - name: fake pipeline end to end (no LLM, no toolchains)
+        run: pnpm mpf port fixtures/inhouse/web-vanilla-counter --to web,android --fake --yes
+        env:
+          MPF_HOME: ${{ runner.temp }}/mpf-home
+      - name: dashboard builds
+        run: pnpm --filter @mpf/dashboard build
+      - name: bundle the CLI with the dashboard and run it
+        run: |
+          pnpm --filter @multiplat/factory build
+          node apps/cli/dist/main.js --help
+          node apps/cli/dist/main.js doctor || true
+
+  web-scaffolds:
+    name: web scaffold flavors build, test, and pass a flow
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm --filter @mpf/analyzer exec playwright install --with-deps chromium
+      - name: vanilla, react, vue, svelte
+        run: |
+          for f in vanilla react vue svelte; do
+            MPF_SPIKE_DIR=${{ runner.temp }}/spike-$f pnpm tsx scripts/spike-target-scaffold.ts --target web --framework $f --e2e
+          done
+
+  mobile-fixtures:
+    name: in-house mobile fixtures build and pass their own tests (${{ matrix.platform }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-15
+            platform: ios
+          - os: ubuntu-latest
+            platform: android
+    steps:
+      - uses: actions/checkout@v4
+      - name: iOS fixtures (XcodeGen spec, xcodebuild, XCTest on a simulator)
+        if: matrix.platform == 'ios'
+        run: |
+          brew install xcodegen
+          device=$(xcrun simctl list devices available | grep -m1 -oE 'iPhone [^(]+' | sed 's/ *$//')
+          echo "simulator: $device"
+          for fx in ios-uikit-notes:UIKitNotes ios-objc-notes:ObjCNotes; do
+            dir=fixtures/inhouse/${fx%%:*}; scheme=${fx##*:}
+            (cd "$dir" && xcodegen generate --quiet)
+            xcodebuild -project "$dir/$scheme.xcodeproj" -scheme "$scheme" -destination "platform=iOS Simulator,name=$device" \
+              -derivedDataPath "${{ runner.temp }}/dd-$scheme" CODE_SIGNING_ALLOWED=NO -quiet test
+          done
+      - uses: actions/setup-java@v4
+        if: matrix.platform == 'android'
+        with:
+          distribution: temurin
+          java-version: '21'
+      - uses: gradle/actions/setup-gradle@v4
+        if: matrix.platform == 'android'
+        with:
+          gradle-version: '8.14.3'
+      - name: Android fixture (Gradle assembleDebug and JUnit on the JVM)
+        if: matrix.platform == 'android'
+        run: |
+          yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses >/dev/null 2>&1 || true
+          cd fixtures/inhouse/android-views-java-notes
+          gradle assembleDebug testDebugUnitTest --console=plain --warning-mode=none
+
+  fixture-matrix:
+    name: public fixtures sync and detect
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: sync the pinned repos into fixtures/.cache
+        run: pnpm fixtures:sync
+      - name: every pinned fixture is detected as the manifest expects
+        run: pnpm vitest run packages/adapters/test/fixture-matrix.test.ts

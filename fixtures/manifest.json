@@ -1,0 +1,175 @@
+{
+  "$comment": "Public fixtures used to exercise the factory across frameworks. `pin` is filled by scripts/fixtures-sync.ts on first sync; never reference paths on a developer's machine here.",
+  "fixtures": [
+    {
+      "id": "todomvc-vue",
+      "url": "https://github.com/tastejs/todomvc",
+      "ref": "master",
+      "subdir": "examples/vue",
+      "platform": "web",
+      "license": "check before vendoring",
+      "expect": {
+        "adapterId": "web-vite",
+        "webFramework": "vue"
+      },
+      "pin": "ff43b02e59dfa604386bb382034b2cd07c2bcd8a"
+    },
+    {
+      "id": "todomvc-svelte",
+      "url": "https://github.com/tastejs/todomvc",
+      "ref": "master",
+      "subdir": "examples/svelte",
+      "platform": "web",
+      "license": "check before vendoring",
+      "expect": {
+        "adapterId": "web-vite",
+        "webFramework": "svelte"
+      },
+      "pin": "ff43b02e59dfa604386bb382034b2cd07c2bcd8a"
+    },
+    {
+      "id": "todomvc-react",
+      "url": "https://github.com/tastejs/todomvc",
+      "ref": "master",
+      "subdir": "examples/react",
+      "platform": "web",
+      "license": "check before vendoring",
+      "expect": {
+        "adapterId": "web-generic",
+        "webFramework": "react"
+      },
+      "pin": "ff43b02e59dfa604386bb382034b2cd07c2bcd8a"
+    },
+    {
+      "id": "todomvc-angular",
+      "url": "https://github.com/tastejs/todomvc",
+      "ref": "master",
+      "subdir": "examples/angular",
+      "platform": "web",
+      "license": "check before vendoring",
+      "expect": {
+        "adapterId": "web-angular"
+      },
+      "pin": "ff43b02e59dfa604386bb382034b2cd07c2bcd8a"
+    },
+    {
+      "id": "realworld-sveltekit",
+      "url": "https://github.com/sveltejs/realworld",
+      "ref": "master",
+      "platform": "web",
+      "license": "MIT",
+      "expect": {
+        "adapterId": "web-sveltekit"
+      },
+      "pin": "df796708040f5200ec572b28ab7f88ecee5794dd"
+    },
+    {
+      "id": "realworld-vue",
+      "url": "https://github.com/gothinkster/vue-realworld-example-app",
+      "ref": "master",
+      "platform": "web",
+      "license": "MIT",
+      "expect": {
+        "adapterId": "web-vite",
+        "webFramework": "vue"
+      },
+      "pin": "f7e48c8178602ce25d43293bc6f8ca51d84ae222"
+    },
+    {
+      "id": "android-architecture-views",
+      "url": "https://github.com/android/architecture-samples",
+      "ref": "views",
+      "platform": "android",
+      "license": "Apache-2.0",
+      "expect": {
+        "adapterId": "android-gradle",
+        "framework": "views"
+      },
+      "pin": "32cd12f7838c5a2df93546ec3e699376b2b6b37a"
+    },
+    {
+      "id": "android-architecture-compose",
+      "url": "https://github.com/android/architecture-samples",
+      "ref": "main",
+      "platform": "android",
+      "license": "Apache-2.0",
+      "expect": {
+        "adapterId": "android-gradle",
+        "framework": "compose"
+      },
+      "pin": "ee66e1526b84c026615df032c705842b7d2a521f"
+    },
+    {
+      "id": "android-minimal-todo",
+      "url": "https://github.com/avjinder/Minimal-Todo",
+      "ref": "master",
+      "platform": "android",
+      "license": "MIT",
+      "expect": {
+        "adapterId": "android-gradle",
+        "language": "java"
+      },
+      "pin": "83bf4c6f56b808149481b0c4b5a88e8a2215e16b"
+    },
+    {
+      "id": "ios-food-truck",
+      "url": "https://github.com/apple/sample-food-truck",
+      "ref": "main",
+      "platform": "ios",
+      "license": "MIT",
+      "expect": {
+        "adapterId": "ios-xcode",
+        "framework": "swiftui"
+      },
+      "pin": "3954a769e99f3cc53297d94f2b960ceb2665b3d6"
+    }
+  ],
+  "inhouse": [
+    {
+      "id": "web-vanilla-counter",
+      "path": "fixtures/inhouse/web-vanilla-counter",
+      "platform": "web",
+      "expect": {
+        "adapterId": "web-static"
+      }
+    },
+    {
+      "id": "web-vanilla-cart",
+      "path": "fixtures/inhouse/web-vanilla-cart",
+      "platform": "web",
+      "expect": {
+        "adapterId": "web-static"
+      }
+    },
+    {
+      "id": "ios-uikit-notes",
+      "path": "fixtures/inhouse/ios-uikit-notes",
+      "platform": "ios",
+      "expect": {
+        "adapterId": "ios-xcode",
+        "framework": "uikit",
+        "language": "swift"
+      }
+    },
+    {
+      "id": "ios-objc-notes",
+      "path": "fixtures/inhouse/ios-objc-notes",
+      "platform": "ios",
+      "expect": {
+        "adapterId": "ios-xcode",
+        "framework": "uikit",
+        "language": "objective-c"
+      }
+    },
+    {
+      "id": "android-views-java-notes",
+      "path": "fixtures/inhouse/android-views-java-notes",
+      "platform": "android",
+      "expect": {
+        "adapterId": "android-gradle",
+        "framework": "views",
+        "language": "java"
+      }
+    }
+  ]
+}

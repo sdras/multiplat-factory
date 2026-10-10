@@ -1,0 +1,26 @@
+{
+  "name": "@mpf/server",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc -p tsconfig.json"
+  },
+  "dependencies": {
+    "@hono/node-server": "catalog:",
+    "@mpf/core": "workspace:*",
+    "@mpf/harness": "workspace:*",
+    "@mpf/orchestrator": "workspace:*",
+    "hono": "catalog:",
+    "pathe": "catalog:",
+    "zod": "catalog:"
+  },
+  "devDependencies": {
+    "tsup": "catalog:",
+    "typescript": "catalog:",
+    "vitest": "catalog:"
+  }
+}

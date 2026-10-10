@@ -1,0 +1,42 @@
+{
+  "name": "multiplat-factory",
+  "private": true,
+  "version": "0.1.0",
+  "description": "Port an app from web, iOS, or Android to the other platforms, with an orchestrator, verification harness, critic, and live dashboard.",
+  "type": "module",
+  "packageManager": "pnpm@12.6.0",
+  "engines": {
+    "node": ">=22.13"
+  },
+  "scripts": {
+    "dev": "turbo run dev --parallel",
+    "build": "turbo run build",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "typecheck": "turbo run typecheck",
+    "lint": "eslint .",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "mpf": "tsx apps/cli/src/main.ts",
+    "doctor": "tsx apps/cli/src/main.ts doctor",
+    "fixtures:sync": "tsx scripts/fixtures-sync.ts"
+  },
+  "devDependencies": {
+    "@mpf/adapters": "workspace:*",
+    "@mpf/core": "workspace:*",
+    "@mpf/harness": "workspace:*",
+    "@mpf/llm": "workspace:*",
+    "@mpf/orchestrator": "workspace:*",
+    "@mpf/wasm-core": "workspace:*",
+    "@nuxt/eslint-config": "catalog:",
+    "@types/node": "catalog:",
+    "eslint": "catalog:",
+    "pathe": "catalog:",
+    "prettier": "catalog:",
+    "tsx": "catalog:",
+    "turbo": "catalog:",
+    "typescript": "catalog:",
+    "vitest": "catalog:",
+    "zod": "catalog:"
+  }
+}

@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- A classic Views app: opt out of the SDK 35+ edge-to-edge enforcement so the action bar and content stay inset. -->
+    <style name="Theme.Notes" parent="Theme.AppCompat.DayNight.DarkActionBar">
+        <item name="android:windowOptOutEdgeToEdgeEnforcement">true</item>
+    </style>
+</resources>
