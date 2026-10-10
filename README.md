@@ -14,7 +14,7 @@ pnpm dev                   # server (4310) + dashboard (4311)
 pnpm mpf port ./my-app --to ios,android
 ```
 
-Requires Node 22.13 or newer (`node:sqlite`; `.nvmrc` says 24). iOS targets need macOS with Xcode; web and Android targets also run on Linux. The factory uses your own Claude credentials (`ANTHROPIC_API_KEY` or the Claude Code login on the machine), every run has a budget cap, and run data lives under `~/.mpf` (or `$MPF_HOME`), never in your project.
+Requires Node 22.13 or newer (`node:sqlite`; `.nvmrc` says 24, so run `nvm use` in the repo first). On an older Node, `pnpm` itself may fail before anything runs with `Cannot find matching keyid`; that is the old Corepack shim, not this project, and switching Node fixes it. iOS targets need macOS with Xcode; web and Android targets also run on Linux. The factory uses your own Claude credentials (`ANTHROPIC_API_KEY` or the Claude Code login on the machine), every run has a budget cap, and run data lives under `~/.mpf` (or `$MPF_HOME`), never in your project.
 
 The same CLI is packaged as `@multiplat/factory` (`npm i -g @multiplat/factory`, then `mpf doctor`). Until it is on npm, `pnpm tsx scripts/release.ts` builds the static dashboard, bundles the CLI with tsup, copies the dashboard next to it (`apps/cli/scripts/bundle-dashboard.mjs`), and packs the tarball into `dist-release/`; install it with `npm i -g dist-release/*.tgz`. `--publish` runs `pnpm publish` from `apps/cli`.
 
