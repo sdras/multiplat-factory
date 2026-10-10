@@ -108,6 +108,42 @@ describe('Orchestrator with the fake pipeline', () => {
     expect(store.listStages(run.id).some((s) => s.status === 'running')).toBe(false)
   })
 
+  it('requeues a stage left running by a process that died, then finishes the run', async () => {
+    const { store, bus, events, orch } = make()
+    const run = orch.createRun({
+      source: { locator: './fixture' },
+      targets: ['web'],
+      options: { checkpoints: { planApproval: false }, coreMode: 'never' },
+    })
+    // Simulate a process that started `ingest` and then disappeared: the store says running, nobody owns it.
+    const ingest = store.getStage(run.id, 'ingest')!
+    store.upsertStage({
+      ...ingest,
+      status: 'running',
+      attempt: 1,
+      startedAt: new Date().toISOString(),
+    })
+    store.updateRun({ ...store.getRun(run.id)!, status: 'running' })
+    // A fresh orchestrator over the same store is what a restarted daemon or a resume script is.
+    const fresh = new Orchestrator({
+      store,
+      bus,
+      config: MpfConfig.parse({}),
+      registry: fakeRegistry(0.02),
+      dataDir: mkdtempSync(join(tmpdir(), 'mpf-test-')),
+    })
+    await fresh.resume(run.id)
+    expect(store.getRun(run.id)?.status).toBe('succeeded')
+    expect(store.getStage(run.id, 'ingest')?.status).toBe('succeeded')
+    expect(
+      events.some(
+        (e) =>
+          e.type === 'log' &&
+          /ingest was interrupted by a stopped process; requeued/.test(e.message),
+      ),
+    ).toBe(true)
+  })
+
   it('pauses and resumes without consuming attempts', async () => {
     const { store, orch } = make()
     const run = orch.createRun({

@@ -125,6 +125,21 @@ export class Orchestrator {
     }
     const run = this.mustRun(runId)
     if (run.status === 'queued') this.setRunStatus(runId, 'running')
+    // A stage left `running` by a process that stopped (a crash, a kill, a restart) belongs to nobody
+    // now: put it back in the queue with its attempt count intact so the loop can run it again.
+    const at = nowIso()
+    for (const s of this.opts.store.listStages(runId)) {
+      if (s.status === 'running' && !live.controllers.has(s.id)) {
+        const next = transition(s, { type: 'requeue', at })
+        this.opts.store.upsertStage(next)
+        this.emitStage(next)
+        this.emit(runId, s.id, {
+          type: 'log',
+          level: 'warn',
+          message: `${s.id} was interrupted by a stopped process; requeued (attempt ${s.attempt} stays counted)`,
+        })
+      }
+    }
     live.loop = this.loop(runId, live).finally(() => {
       live.loop = undefined
     })

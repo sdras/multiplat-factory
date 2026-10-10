@@ -75,7 +75,8 @@ const ALLOWED: Record<StageAction['type'], StageStatus[]> = {
   resume: ['waiting_human', 'paused'],
   pause: ['running', 'queued'],
   cancel: ['pending', 'queued', 'running', 'waiting_human', 'paused', 'failed'],
-  requeue: ['failed', 'succeeded', 'blocked', 'paused', 'waiting_human'],
+  // `running` and `queued` requeue when the process that owned them died (the attempt stays counted).
+  requeue: ['failed', 'succeeded', 'blocked', 'paused', 'waiting_human', 'running', 'queued'],
 }
 
 export class InvalidTransition extends Error {
