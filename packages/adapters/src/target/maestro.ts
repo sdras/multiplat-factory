@@ -38,6 +38,9 @@ export interface CompiledMaestro {
  * testId, which the generated app exposes as a resource id (Compose testTag with
  * testTagsAsResourceId, or accessibilityIdentifier on iOS).
  */
+/** Maestro's pointer gestures; a behavior's tap, doubleTap, and longPress steps map onto them one to one. */
+type Gesture = 'tapOn' | 'doubleTapOn' | 'longPressOn'
+
 export function compileMaestroFlow(
   spec: AppSpec,
   behavior: Behavior,
@@ -93,8 +96,8 @@ export function compileMaestroFlow(
    * first and the descendant match when the direct one is not on screen (the same pair the text
    * assertions use).
    */
-  const tapById = (id: string, text?: string): string[] => {
-    if (text === undefined) return [...reveal(id), `- tapOn:`, `    id: ${yamlString(id)}`]
+  const tapById = (id: string, text?: string, gesture: Gesture = 'tapOn'): string[] => {
+    if (text === undefined) return [...reveal(id), `- ${gesture}:`, `    id: ${yamlString(id)}`]
     const pattern = yamlString(`.*${escapeRegex(text)}.*`)
     return [
       ...reveal(id, text),
@@ -104,7 +107,7 @@ export function compileMaestroFlow(
       `        id: ${yamlString(id)}`,
       `        text: ${pattern}`,
       `    commands:`,
-      `      - tapOn:`,
+      `      - ${gesture}:`,
       `          id: ${yamlString(id)}`,
       `          text: ${pattern}`,
       `- runFlow:`,
@@ -113,7 +116,7 @@ export function compileMaestroFlow(
       `        id: ${yamlString(id)}`,
       `        text: ${pattern}`,
       `    commands:`,
-      `      - tapOn:`,
+      `      - ${gesture}:`,
       ...selector(id, text, '          '),
     ]
   }
@@ -145,9 +148,16 @@ export function compileMaestroFlow(
     const el = elements.get(elementId)
     return !!el && hooked(el.testId)
   }
-  /** A short literal label a text matcher can find on screen (no prose, no parentheticals). */
+  /**
+   * A literal text a matcher can find on screen: the spec's sourceSelector when it is plain text
+   * (the visible label a mobile spec gives an unhooked element; a CSS selector means nothing to
+   * Maestro), else a short label (no prose, no parentheticals).
+   */
   const labelText = (elementId: string): string | undefined => {
-    const label = elements.get(elementId)?.label?.trim()
+    const el = elements.get(elementId)
+    const selector = el?.sourceSelector?.trim()
+    if (selector && !/[.#[\]>:=]/.test(selector)) return selector
+    const label = el?.label?.trim()
     return label && label.length <= 40 && !/[()[\]{}:;]/.test(label) ? label : undefined
   }
   const revealText = (text: string): string[] => [
@@ -162,8 +172,12 @@ export function compileMaestroFlow(
    * Tap an element on the source app: by hook when it has one (narrowed by the step's text, as on
    * a target), else by the text the step names, else by a literal label.
    */
-  const sourceTap = (elementId: string, text?: string): string[] | undefined => {
-    if (isHooked(elementId)) return tapById(idOf(elementId), text)
+  const sourceTap = (
+    elementId: string,
+    text?: string,
+    gesture: Gesture = 'tapOn',
+  ): string[] | undefined => {
+    if (isHooked(elementId)) return tapById(idOf(elementId), text, gesture)
     let pattern: string | undefined
     if (text !== undefined) pattern = `(?i).*${escapeRegex(text)}.*`
     else {
@@ -171,7 +185,7 @@ export function compileMaestroFlow(
       if (label) pattern = `(?i)${escapeRegex(label)}`
     }
     if (!pattern) return undefined
-    return [...revealText(pattern), `- tapOn:`, `    text: ${yamlString(pattern)}`]
+    return [...revealText(pattern), `- ${gesture}:`, `    text: ${yamlString(pattern)}`]
   }
   /** Screens visited so far, so a return trip prefers the back affordance over a forward edge. */
   const history: string[] = []
@@ -319,17 +333,21 @@ export function compileMaestroFlow(
         }
         current = behavior.screen
         break
-      case 'tap': {
+      case 'tap':
+      case 'doubleTap':
+      case 'longPress': {
+        const gesture: Gesture =
+          step.op === 'tap' ? 'tapOn' : step.op === 'doubleTap' ? 'doubleTapOn' : 'longPressOn'
         if (sourceApp && !isHooked(step.element)) {
           const tap =
-            sourceTap(step.element, step.text) ??
-            (backLike(step.element, step.element) ? platformBack() : undefined)
+            sourceTap(step.element, step.text, gesture) ??
+            (step.op === 'tap' && backLike(step.element, step.element) ? platformBack() : undefined)
           if (!tap) return unhooked(step.element)
           lines.push(...tap)
           advance(step.element)
           break
         }
-        lines.push(...tapById(idOf(step.element), step.text))
+        lines.push(...tapById(idOf(step.element), step.text, gesture))
         advance(step.element)
         break
       }
@@ -388,24 +406,44 @@ export function compileMaestroFlow(
         break
       }
       case 'expectCount': {
-        // Maestro cannot count, but index-based row ids make a count checkable: row N-1 is on screen
-        // and row N is not. Rows without an index stay unverifiable.
+        // Maestro cannot count, but a count is checkable as "row N-1 is on screen and row N is not":
+        // with index-based row ids by id, otherwise with Maestro's `index` on the shared id (the
+        // N-th match). Only a source app without a hook for the rows has nothing to select by.
         const prefix = rowPrefix(
           spec,
           elements.get(step.element) ? currentScreenOf(spec, step.element) : current,
           step.element,
         )
-        if (!prefix) {
+        if (prefix) {
+          if (step.count > 0) {
+            lines.push(...reveal(`${prefix}${step.count - 1}`))
+            lines.push(`- assertVisible:`, `    id: ${yamlString(`${prefix}${step.count - 1}`)}`)
+          }
+          lines.push(`- assertNotVisible:`, `    id: ${yamlString(`${prefix}${step.count}`)}`)
+          break
+        }
+        if (sourceApp && !isHooked(step.element)) {
           unverifiable.push(
-            `expectCount on ${step.element} has no Maestro equivalent (rows carry no index)`,
+            `expectCount on ${step.element} cannot be checked on the source app (rows carry no hook)`,
           )
           break
         }
+        const id = idOf(step.element)
         if (step.count > 0) {
-          lines.push(...reveal(`${prefix}${step.count - 1}`))
-          lines.push(`- assertVisible:`, `    id: ${yamlString(`${prefix}${step.count - 1}`)}`)
+          lines.push(
+            `- scrollUntilVisible:`,
+            `    element:`,
+            `      id: ${yamlString(id)}`,
+            `      index: ${step.count - 1}`,
+            `    direction: DOWN`,
+            `    timeout: 4000`,
+            `    optional: true`,
+            `- assertVisible:`,
+            `    id: ${yamlString(id)}`,
+            `    index: ${step.count - 1}`,
+          )
         }
-        lines.push(`- assertNotVisible:`, `    id: ${yamlString(`${prefix}${step.count}`)}`)
+        lines.push(`- assertNotVisible:`, `    id: ${yamlString(id)}`, `    index: ${step.count}`)
         break
       }
       case 'restart':

@@ -102,7 +102,7 @@ dependencyResolutionManagement {
         mavenCentral()
     }
 }
-rootProject.name = ${kstr(p.appName)}
+rootProject.name = ${kstr(gradleProjectName(p.appName))}
 include(":app")
 `
 
@@ -485,6 +485,15 @@ ${p.core ? '- Shared core: see the "Shared core" section appended below; call `c
 
 function kstr(s: string): string {
   return JSON.stringify(s)
+}
+
+/** Gradle forbids `/ \\ : < > " ? * |` in project names; the display name keeps them, the project name does not. */
+export function gradleProjectName(appName: string): string {
+  const cleaned = appName
+    .replace(/[/\\:<>"?*|]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+  return cleaned || 'app'
 }
 
 function xml(s: string): string {

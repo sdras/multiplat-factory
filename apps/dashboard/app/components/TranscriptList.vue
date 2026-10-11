@@ -24,6 +24,8 @@ function level(t: TranscriptItem): string {
   if (typeof lvl === 'string') return `lvl-${lvl}`
   return t.kind === 'tool_result' && t.meta?.ok === false ? 'lvl-error' : ''
 }
+/** A log line about what was dismissed on the device before a launch gets a device glyph instead of the log tag. */
+const device = (t: TranscriptItem) => t.kind === 'log' && isDeviceNotice(t.text)
 
 // Follow the tail while the reader is at the bottom; never yank a reader who scrolled up.
 watch(
@@ -45,7 +47,10 @@ onMounted(() => {
   <div ref="el" class="transcript" :class="{ compact }">
     <div v-for="t in items" :key="t.seq" class="item" :class="[`k-${t.kind}`, level(t)]">
       <span v-if="!compact" class="at">{{ timeOfDay(t.ts) }}</span>
-      <span class="k">{{ TAG[t.kind] }}</span>
+      <span v-if="device(t)" class="k device" title="Device notice">
+        <UiIcon name="device" :size="11" /><span class="sr-only">device</span>
+      </span>
+      <span v-else class="k">{{ TAG[t.kind] }}</span>
       <span class="txt">{{ text(t) }}</span>
     </div>
     <p v-if="!items.length" class="empty">{{ empty ?? 'Nothing yet.' }}</p>
@@ -55,5 +60,10 @@ onMounted(() => {
 <style scoped>
 .transcript.compact .item {
   grid-template-columns: 44px minmax(0, 1fr);
+}
+.k.device {
+  display: inline-flex;
+  align-items: center;
+  padding-top: 3px;
 }
 </style>

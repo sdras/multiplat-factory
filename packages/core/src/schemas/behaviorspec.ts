@@ -19,6 +19,22 @@ export const Step = z.discriminatedUnion('op', [
       .optional()
       .describe('When several elements share the id, the one whose visible text contains this'),
   }),
+  z.object({
+    op: z.literal('doubleTap'),
+    element: z.string(),
+    text: z
+      .string()
+      .optional()
+      .describe('As on tap: picks the row whose visible text contains this'),
+  }),
+  z.object({
+    op: z.literal('longPress'),
+    element: z.string(),
+    text: z
+      .string()
+      .optional()
+      .describe('As on tap: picks the row whose visible text contains this'),
+  }),
   z.object({ op: z.literal('type'), element: z.string(), text: z.string() }),
   z.object({
     op: z.literal('select'),

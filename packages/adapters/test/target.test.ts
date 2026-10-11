@@ -1,6 +1,11 @@
 import { describe, expect, it } from 'vitest'
 import type { AppSpec, Behavior } from '@mpf/core'
-import { androidFiles, packageNameFor, screenClassName } from '../src/target/android/template.ts'
+import {
+  androidFiles,
+  gradleProjectName,
+  packageNameFor,
+  screenClassName,
+} from '../src/target/android/template.ts'
 import { iosFiles } from '../src/target/ios/template.ts'
 import { parseGradleOutput } from '../src/target/gradle.ts'
 import { parseJUnitXml } from '../src/target/junit.ts'
@@ -173,6 +178,54 @@ describe('compileMaestroFlow', () => {
     expect(yaml).toContain('text: ".*5.*"')
     expect(yaml).toContain('- stopApp')
   })
+  it('checks a count on rows that share one id with the index selector', () => {
+    const b: Behavior = {
+      id: 'B-015',
+      title: 'count',
+      screen: 'counter',
+      priority: 'must',
+      category: 'state',
+      evidence: [],
+      verifiedOnSource: false,
+      steps: [{ op: 'expectCount', element: 'count-value', count: 3 }],
+    }
+    const { yaml, unverifiable } = compileMaestroFlow(spec, b, opts)
+    expect(unverifiable).toBeUndefined()
+    expect(yaml).toContain('- assertVisible:\n    id: "count-value"\n    index: 2')
+    expect(yaml).toContain('- assertNotVisible:\n    id: "count-value"\n    index: 3')
+    const zero = compileMaestroFlow(
+      spec,
+      { ...b, steps: [{ op: 'expectCount', element: 'count-value', count: 0 }] },
+      opts,
+    )
+    expect(zero.yaml).not.toContain('- assertVisible:\n    id: "count-value"')
+    expect(zero.yaml).toContain('- assertNotVisible:\n    id: "count-value"\n    index: 0')
+    // A source app whose rows carry no hook has nothing to select by.
+    const source = compileMaestroFlow(spec, b, { ...opts, navigation: 'none', sourceHooks: [] })
+    expect(source.unverifiable).toContain('rows carry no hook')
+  })
+  it('maps doubleTap and longPress to the Maestro gestures, on a target and on a source app', () => {
+    const b: Behavior = {
+      id: 'B-014',
+      title: 'gestures',
+      screen: 'counter',
+      priority: 'must',
+      category: 'state',
+      evidence: [],
+      verifiedOnSource: false,
+      steps: [
+        { op: 'doubleTap', element: 'increment' },
+        { op: 'longPress', element: 'count-value', text: '5' },
+      ],
+    }
+    const { yaml } = compileMaestroFlow(spec, b, opts)
+    expect(yaml).toContain('- doubleTapOn:\n    id: "increment"')
+    expect(yaml).toContain('- longPressOn:\n          id: "count-value"\n          text: ".*5.*"')
+    const source = compileMaestroFlow(spec, b, { ...opts, navigation: 'none', sourceHooks: [] })
+    expect(source.unverifiable).toBeUndefined()
+    expect(source.yaml).toContain('- doubleTapOn:\n    text: "(?i)')
+    expect(source.yaml).toContain('- longPressOn:\n    text: "(?i).*5.*"')
+  })
   it('accepts a label on the tagged node or on one of its descendants', () => {
     const b: Behavior = {
       id: 'B-005',
@@ -231,7 +284,9 @@ describe('compileMaestroFlow', () => {
     }
     const { yaml, unverifiable } = compileMaestroFlow(spec, b, opts)
     expect(yaml).toContain('mpf_seed: "{\\"counter.state\\":{\\"count\\":3,\\"step\\":1}}"')
-    expect(unverifiable).toMatch(/expectCount/)
+    // The count on a shared id compiles with the index selector; only the custom step is a hole.
+    expect(unverifiable).not.toMatch(/expectCount/)
+    expect(yaml).toContain('- assertVisible:\n    id: "increment"\n    index: 0')
     expect(unverifiable).toMatch(/custom step/)
   })
   it('navigates by relaunching with a route argument when asked (iOS)', () => {
@@ -703,6 +758,64 @@ describe('source-app flows on an app with its own hooks', () => {
     }
     expect(compileMaestroFlow(notes, tapping, src).yaml).toContain('text: "(?i)Notes"')
   })
+
+  it('matches an unhooked element by its plain-text sourceSelector on the source, never on a target', () => {
+    const labelled: AppSpec = {
+      ...notes,
+      screens: [
+        {
+          ...notes.screens[0]!,
+          elements: [
+            ...notes.screens[0]!.elements,
+            // The label alone is prose a text matcher cannot use; the selector is the visible text.
+            {
+              id: 'clear-done',
+              kind: 'button',
+              label: 'Clear completed notes (footer)',
+              testId: 'clear-done',
+              sourceSelector: 'Clear completed',
+            },
+            // A CSS selector means nothing to Maestro: the label still decides.
+            {
+              id: 'count',
+              kind: 'text',
+              label: 'Items left',
+              testId: 'todo-count',
+              sourceSelector: 'span.todo-count',
+            },
+          ],
+        },
+        notes.screens[1]!,
+      ],
+    }
+    const b: Behavior = {
+      ...base,
+      screen: 'list',
+      steps: [
+        { op: 'expectVisible', element: 'clear-done' },
+        { op: 'tap', element: 'clear-done' },
+        { op: 'expectHidden', element: 'clear-done' },
+        { op: 'expectVisible', element: 'count' },
+      ],
+    }
+    const { yaml, unverifiable } = compileMaestroFlow(labelled, b, src)
+    expect(unverifiable).toBeUndefined()
+    expect(yaml).toContain('- assertVisible:\n    text: "(?i)Clear completed"')
+    expect(yaml).toContain('- tapOn:\n    text: "(?i)Clear completed"')
+    expect(yaml).toContain('- assertNotVisible:\n    text: "(?i)Clear completed"')
+    expect(yaml).toContain('- assertVisible:\n    text: "(?i)Items left"')
+    expect(yaml).not.toContain('todo-count')
+    expect(yaml).not.toContain('clear-done')
+    const target = compileMaestroFlow(labelled, b, {
+      appId: 'app.mpf.notes',
+      deepLinkBase: 'mpf://app.mpf.notes',
+      seedArgument: 'mpf_seed',
+    })
+    expect(target.yaml).toContain('- assertVisible:\n    id: "clear-done"')
+    expect(target.yaml).toContain('- tapOn:\n    id: "clear-done"')
+    expect(target.yaml).toContain('- assertVisible:\n    id: "todo-count"')
+    expect(target.yaml).not.toContain('Clear completed')
+  })
 })
 
 describe('inputLines', () => {
@@ -1008,13 +1121,15 @@ describe('counts and pauses', () => {
       screen: spec.navigation.root,
       steps: [{ op: 'expectCount', element: 'count-value', count: 1 }],
     }
-    expect(
-      compileMaestroFlow(spec, unindexed, {
-        appId: 'app',
-        deepLinkBase: 'mpf://app',
-        seedArgument: 'mpf_seed',
-      }).unverifiable,
-    ).toMatch(/rows carry no index/)
+    const shared = compileMaestroFlow(spec, unindexed, {
+      appId: 'app',
+      deepLinkBase: 'mpf://app',
+      seedArgument: 'mpf_seed',
+    })
+    // Rows without an index share one id: Maestro's index selector picks the N-th match.
+    expect(shared.unverifiable).toBeUndefined()
+    expect(shared.yaml).toContain('- assertVisible:\n    id: "count-value"\n    index: 0')
+    expect(shared.yaml).toContain('- assertNotVisible:\n    id: "count-value"\n    index: 1')
   })
 
   it('compiles wait to a pause that works on a source app too', () => {
@@ -1028,5 +1143,23 @@ describe('counts and pauses', () => {
     expect(source.unverifiable).toBeUndefined()
     expect(source.yaml).toContain('id: "mpf-pause-500"\n    timeout: 500\n    optional: true')
     expect(source.yaml).not.toContain('id: "mpf-root"')
+  })
+})
+
+describe('gradle project names', () => {
+  it('drops the characters Gradle forbids and keeps the display name intact', () => {
+    expect(gradleProjectName('TodoMVC: Vue')).toBe('TodoMVC Vue')
+    expect(gradleProjectName('a/b\\c<d>e"f?g*h|i')).toBe('a b c d e f g h i')
+    expect(gradleProjectName(':::')).toBe('app')
+    const files = androidFiles({
+      packageName: 'app.mpf.todomvcvue',
+      appName: 'TodoMVC: Vue',
+      minSdk: 26,
+      compileSdk: 36,
+      screens: [{ id: 'home', name: 'Home' }],
+      rootScreen: 'home',
+    })
+    expect(files['settings.gradle.kts']).toContain('rootProject.name = "TodoMVC Vue"')
+    expect(files['app/src/main/res/values/strings.xml']).toContain('TodoMVC: Vue')
   })
 })

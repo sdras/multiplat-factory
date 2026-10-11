@@ -30,6 +30,13 @@ describe('worker permission policy', () => {
     expect(decide(defaultPolicy(cwd), 'Bash', { command: 'ls' }).allow).toBe(false)
   })
 
+  it('skips leading variable assignments but still scans their paths', () => {
+    expect(decide(policy, 'Bash', { command: `S=${cwd}/scratch; ls $S` }).allow).toBe(true)
+    expect(decide(policy, 'Bash', { command: 'FOO=1 ls' }).allow).toBe(true)
+    expect(decide(policy, 'Bash', { command: 'S=/Users/someone/secret; ls $S' }).allow).toBe(false)
+    expect(decide(policy, 'Bash', { command: 'S=x; rm -rf $S' }).allow).toBe(false)
+  })
+
   it('judges every command in a for loop or a sequence, not just the first', () => {
     expect(
       decide(policy, 'Bash', { command: 'for f in a.swift b.swift; do ls $f; done' }).allow,
@@ -41,6 +48,12 @@ describe('worker permission policy', () => {
     expect(decide(policy, 'Bash', { command: 'ls a && rm -rf b' }).allow).toBe(false)
     expect(decide(policy, 'Bash', { command: 'ls a || rm -rf b' }).allow).toBe(false)
     expect(commandsOf('for f in x y; do ls $f; wc -l $f; done')).toEqual(['ls $f', 'wc -l $f'])
+    expect(commandsOf('for f in vectors/*.json\ndo\n  ls $f\n  wc -l $f\ndone')).toEqual([
+      'ls $f',
+      'wc -l $f',
+    ])
+    expect(decide(policy, 'Bash', { command: 'ls a\nrm -rf b' }).allow).toBe(false)
+    expect(decide(policy, 'Bash', { command: 'for f in a b\ndo\n  ls $f\ndone' }).allow).toBe(true)
     expect(commandsOf('ls | head -3')).toEqual(['ls | head -3'])
   })
 

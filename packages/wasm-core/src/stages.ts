@@ -17,7 +17,7 @@ import {
   type StageRunner,
 } from '@mpf/harness'
 import { logicRunnerAllow } from '@mpf/adapters'
-import { READ_ONLY_BASH, runWorker, workerFailure, type AgentFn } from '@mpf/analyzer'
+import { READ_ONLY_BASH, runWorker, workerFailure, type AgentFn, WRITE_BASH } from '@mpf/analyzer'
 import { runAgent } from '@mpf/llm'
 import { buildCoreWasm, testCore } from './cargo.ts'
 import { loadCore } from './host.ts'
@@ -49,7 +49,8 @@ export interface CoreDeps {
 const CARGO_BASH: RegExp[] = [
   /^cargo\b/,
   /^rustup (show|target list)\b/,
-  /^rustc --version\b/,
+  // `rustc --version` and `--print <thing>` (target lists, sysroot, cfg) are how a worker learns what it may build for.
+  /^rustc --(version|print)\b/,
   /^rustfmt\b/,
 ]
 
@@ -166,7 +167,12 @@ export function coreExtractStage(config: MpfConfig, deps: CoreDeps = {}): StageR
         effort: 'xhigh' as const,
         cwd: g.dir,
         readDirs: [g.sourceDir],
-        bashAllow: [...CARGO_BASH, ...logicRunnerAllow(g.spec.source.platform), ...READ_ONLY_BASH],
+        bashAllow: [
+          ...CARGO_BASH,
+          ...logicRunnerAllow(g.spec.source.platform),
+          ...WRITE_BASH,
+          ...READ_ONLY_BASH,
+        ],
         systemPrompt: `${CORE_EXTRACT_SYSTEM}\n\n# Crate conventions\n${files['MPF.md']}`,
         outputSchema: CoreExtractResult,
         maxTurns: 150,
@@ -256,13 +262,27 @@ export function coreVectorsStage(config: MpfConfig, deps: CoreDeps = {}): StageR
       // The extraction worker records vectors by running the source when it can; when every
       // planned function already has executed vectors, another worker would only add cost.
       const already = readVectorSets(g.dir)
-      const covered = g.plan.core.functions.every((f) => {
+      const sized = g.plan.core.functions.every((f) => {
         const set = already.find((x) => x.function === f.name)
-        return (
-          set && set.vectors.length >= 3 && set.vectors.some((v) => v.provenance === 'executed')
-        )
+        return set && set.vectors.length >= 3
       })
+      const allVectors = already.reduce((n, x) => n + x.vectors.length, 0)
+      const executedShare =
+        allVectors === 0
+          ? 0
+          : already.reduce(
+              (n, x) => n + x.vectors.filter((v) => v.provenance === 'executed').length,
+              0,
+            ) / allVectors
+      const derivedOnly = already
+        .filter((x) => !x.vectors.some((v) => v.provenance === 'executed'))
+        .map((x) => x.function)
+      // Every function has a usable set, and either each one was executed or the set as a whole mostly was:
+      // a top-up worker rarely adds more than it costs then (one burned $3 twice over a single function).
+      const covered = sized && (derivedOnly.length === 0 || executedShare >= 0.5)
       if (covered) {
+        if (derivedOnly.length)
+          ctx.log('info', `derived-only functions kept as they are: ${derivedOnly.join(', ')}`)
         const total = already.reduce((n, x) => n + x.vectors.length, 0)
         for (const set of already)
           ctx.addArtifact({
@@ -290,7 +310,11 @@ export function coreVectorsStage(config: MpfConfig, deps: CoreDeps = {}): StageR
           budgetShare: 0.05,
           cwd: g.sourceDir,
           readDirs: [g.dir],
-          bashAllow: [...logicRunnerAllow(g.spec.source.platform), ...READ_ONLY_BASH],
+          bashAllow: [
+            ...logicRunnerAllow(g.spec.source.platform),
+            ...WRITE_BASH,
+            ...READ_ONLY_BASH,
+          ],
           systemPrompt: VECTORS_SYSTEM,
           prompt: vectorsPrompt({
             functions: g.plan.core.functions,
@@ -303,7 +327,29 @@ export function coreVectorsStage(config: MpfConfig, deps: CoreDeps = {}): StageR
         },
         agent,
       )
-      if (!result.ok) return workerFailure(result, 'vectors worker failed')
+      if (!result.ok) {
+        // A top-up worker that ran out (budget, turns) must not throw away vectors extraction already
+        // recorded: when every planned function has at least one vector, the sets stand as they are.
+        const have = new Map(readVectorSets(g.dir).map((s) => [s.function, s.vectors.length]))
+        const missing = g.plan.core.functions.map((f) => f.name).filter((n) => !have.get(n))
+        if (missing.length === 0) {
+          const total = [...have.values()].reduce((n, c) => n + c, 0)
+          ctx.log(
+            'warn',
+            `vectors worker failed (${result.error ?? 'unknown'}); keeping the ${total} vectors extraction recorded for all ${have.size} functions`,
+          )
+          return {
+            status: 'succeeded',
+            costUsd: result.costUsd,
+            result: {
+              functions: have.size,
+              vectors: total,
+              notes: 'worker failed; extraction vectors kept',
+            },
+          }
+        }
+        return workerFailure(result, 'vectors worker failed')
+      }
       const out = GoldenVectorsOutput.parse(result.structured ?? { sets: [] })
       const existing = new Map(readVectorSets(g.dir).map((s) => [s.function, s]))
       const merged = out.sets.map((set) => {

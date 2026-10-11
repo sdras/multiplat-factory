@@ -13,6 +13,7 @@ export type IconName =
   | 'copy'
   | 'image'
   | 'flag'
+  | 'device'
 
 type Def = { d: string[]; box: [number, number]; fill?: boolean }
 const DEFS: Record<IconName, Def> = {
@@ -39,6 +40,11 @@ const DEFS: Record<IconName, Def> = {
     box: [24, 24],
   },
   flag: { d: ['M2.5 11V1.5h7l-1.5 2.5 1.5 2.5h-7'], box: [12, 12] },
+  // A phone outline: the emulator or simulator a notice came from.
+  device: {
+    d: ['M3.5 1h5a1 1 0 0 1 1 1v8a1 1 0 0 1-1 1h-5a1 1 0 0 1-1-1V2a1 1 0 0 1 1-1z', 'M5 9h2'],
+    box: [12, 12],
+  },
 }
 </script>
 

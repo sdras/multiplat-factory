@@ -8,6 +8,7 @@ export { coreCandidacy, type Candidacy } from './candidacy.ts'
 export { pruneInvalidBehaviors, validateBehaviorRefs, validatePlan } from './validate.ts'
 export {
   READ_ONLY_BASH,
+  WRITE_BASH,
   readSessionLedger,
   runWorker,
   workerFailure,

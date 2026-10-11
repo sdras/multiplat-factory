@@ -365,6 +365,9 @@ export async function buildInventory(
       for (const re of TEST_HOOKS)
         for (const m of text.matchAll(re))
           if (m[1] && testHooks.size < 400) testHooks.add(normalizeHook(m[1]))
+      if (HTML_ID_LANGUAGES.has(language))
+        for (const m of text.matchAll(HTML_ID))
+          if (m[1] && testHooks.size < 400) testHooks.add(normalizeHook(m[1]))
     }
     if (role === 'route') routeFiles.push(rel)
     if (role === 'entry') entryFiles.add(rel)
@@ -443,6 +446,15 @@ const TEST_HOOKS: RegExp[] = [
   /\btestId\s*[=:]\s*["']([^"']+)["']/g,
   /android:id="@\+id\/([^"]+)"/g,
 ]
+
+/**
+ * Web markup where an HTML `id` attribute is a stable hook a test can address (`#toggle-all`).
+ * Storyboards and Android layouts carry ids of their own kind, handled above; placeholders are
+ * copy, not hooks, and stay out.
+ */
+const HTML_ID_LANGUAGES = new Set(['html', 'vue', 'svelte', 'javascript', 'typescript', 'tsx'])
+/** `id="toggle-all"` in markup or a template literal; not `data-testid=`, `android:id=`, a bound `:id=`, or `el.id=`. */
+const HTML_ID = /(?<![\w:.-])id=["']([^"'{}$]+)["']/g
 
 /** `note-row-\(indexPath.row)` and `row-${id}` become `note-row-<indexPath.row>` and `row-<id>`, the spec's placeholder form. */
 function normalizeHook(hook: string): string {

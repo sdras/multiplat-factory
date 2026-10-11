@@ -19,7 +19,17 @@ export const Element = z.object({
   id: z.string().describe('Stable id, used as the cross-platform test hook'),
   kind: ElementKind,
   label: z.string().describe('Visible label or accessible name'),
-  testId: z.string().describe('Value for data-testid / accessibilityIdentifier / testTag'),
+  testId: z
+    .string()
+    .describe(
+      'Value for data-testid / accessibilityIdentifier / testTag; the hook every port adds',
+    ),
+  sourceSelector: z
+    .string()
+    .optional()
+    .describe(
+      'How to find this element on the original app when it has no test hook: a CSS selector for web (class, id, placeholder, role); the visible label text for mobile',
+    ),
   bindsTo: z.string().optional().describe('State path this element reads or writes'),
   action: z.string().optional().describe('What interacting does, in plain words'),
 })

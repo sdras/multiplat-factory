@@ -1,11 +1,11 @@
 /**
  * Drive an existing run without the daemon (handy while iterating on stages).
  *
- *   MPF_HOME=... pnpm tsx scripts/run-control.ts <runId> resume [--until <stage>] [--budget <usd>]
+ *   MPF_HOME=... pnpm tsx scripts/run-control.ts <runId> resume [--until <stage>] [--budget <usd>] [--core auto|always|never]
  *   MPF_HOME=... pnpm tsx scripts/run-control.ts <runId> rerun <stageId> [--approve] [--until <stage>]
  *   MPF_HOME=... pnpm tsx scripts/run-control.ts <runId> answer <stageId> <choice> [note]
  *   MPF_HOME=... pnpm tsx scripts/run-control.ts <runId> status
- *   MPF_HOME=... pnpm tsx scripts/run-control.ts new <source> --to ios,android [--until <stage>] [--budget <usd>] [--yes]
+ *   MPF_HOME=... pnpm tsx scripts/run-control.ts new <source> --to ios,android [--until <stage>] [--budget <usd>] [--core auto|always|never] [--yes]
  */
 import { RunEventBus, SqliteRunStore, dbPath, loadConfig, mpfHome, type Event } from '@mpf/core'
 import { Orchestrator, realRegistry } from '@mpf/orchestrator'
@@ -25,7 +25,7 @@ const flag = (name: string) => {
 }
 const approve = rest.includes('--approve')
 const until = flag('--until')
-const VALUE_FLAGS = ['--until', '--to', '--budget']
+const VALUE_FLAGS = ['--until', '--to', '--budget', '--core']
 const positional = rest.filter(
   (a, i) => !a.startsWith('--') && !VALUE_FLAGS.includes(rest[i - 1] ?? ''),
 )
@@ -67,6 +67,7 @@ if (creating) {
       .filter(Boolean) as never,
     options: {
       ...(budget ? { budgetUsd: Number(budget) } : {}),
+      ...(flag('--core') ? { coreMode: flag('--core') as 'auto' | 'always' | 'never' } : {}),
       ...(rest.includes('--yes')
         ? { checkpoints: { planApproval: false, beforeFixLoop: false } }
         : {}),
@@ -98,13 +99,14 @@ if (!run) {
   process.exit(1)
 }
 const budget = flag('--budget')
-if (until !== undefined || budget) {
+if (until !== undefined || budget || flag('--core')) {
   store.updateRun({
     ...run,
     options: {
       ...run.options,
       ...(until !== undefined ? { until: until || undefined } : {}),
       ...(budget ? { budgetUsd: Number(budget) } : {}),
+      ...(flag('--core') ? { coreMode: flag('--core') as 'auto' | 'always' | 'never' } : {}),
     },
   })
 }

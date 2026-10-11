@@ -105,4 +105,29 @@ describe('test hooks', () => {
       'screen-cart',
     ])
   })
+
+  it('collects HTML ids from web markup, not placeholders, bound ids, or storyboard object ids', async () => {
+    const { mkdtempSync, mkdirSync, writeFileSync } = await import('node:fs')
+    const { tmpdir } = await import('node:os')
+    const { join } = await import('node:path')
+    const root = mkdtempSync(join(tmpdir(), 'mpf-ids-'))
+    mkdirSync(join(root, 'src/components'), { recursive: true })
+    mkdirSync(join(root, 'app/res/layout'), { recursive: true })
+    writeFileSync(
+      join(root, 'index.html'),
+      '<section class="todoapp"><input class="new-todo" placeholder="What needs to be done?"></section><footer id="info" class="info"></footer>',
+    )
+    writeFileSync(
+      join(root, 'src/components/Todos.vue'),
+      '<template><input id="toggle-all" class="toggle-all" type="checkbox" /><li v-for="todo in todos" :id="todo.id" :key="todo.id">{{ todo.title }}</li></template>',
+    )
+    writeFileSync(join(root, 'src/main.js'), 'el.id="dynamic"; const t = `<b id="${x}">`')
+    writeFileSync(
+      join(root, 'app/Main.storyboard'),
+      '<view id="Ab3-fG-9xZ"><label id="q1-22-abc"/></view>',
+    )
+    writeFileSync(join(root, 'app/res/layout/main.xml'), '<Button android:id="@+id/save" />')
+    const inv = await buildInventory(root, {})
+    expect(inv.hints.testHooks).toEqual(['info', 'save', 'toggle-all'])
+  })
 })

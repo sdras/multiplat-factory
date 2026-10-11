@@ -21,13 +21,31 @@ export interface RunView {
   verdicts: Verdict[]
   transcripts: Record<string, TranscriptItem[]>
   pending?: { stageId?: string; reason: string; choices: { id: string; label: string }[] }
+  /**
+   * Behaviors per target whose flows failed without blocking the target, because a skipped
+   * `custom` step made them partial. Read off the test stage's log line and cleared by the next
+   * e2e result for that target, so each fix round starts clean.
+   */
+  partialFlows: Record<string, string[]>
   lastSeq: number
 }
 
 export const MAX_TRANSCRIPT = 2000
 
+/** The test stage's warning for flows that failed but do not block (the ids follow the colon). */
+export const PARTIAL_FLOWS_LOG =
+  /^\d+ failing flow\(s\) contain a step the compiler could not express and do not block the target: (.+)$/
+
 export function emptyView(): RunView {
-  return { stages: [], artifacts: [], tests: [], verdicts: [], transcripts: {}, lastSeq: -1 }
+  return {
+    stages: [],
+    artifacts: [],
+    tests: [],
+    verdicts: [],
+    transcripts: {},
+    partialFlows: {},
+    lastSeq: -1,
+  }
 }
 
 export function applyEvent(view: RunView, e: Event): RunView {
@@ -51,6 +69,11 @@ export function applyEvent(view: RunView, e: Event): RunView {
       break
     case 'test.result':
       next.tests = [...next.tests, e.result]
+      if (e.result.kind === 'e2e' && e.result.target in next.partialFlows) {
+        next.partialFlows = Object.fromEntries(
+          Object.entries(next.partialFlows).filter(([target]) => target !== e.result.target),
+        )
+      }
       break
     case 'critic.verdict':
       next.verdicts = [...next.verdicts, e.verdict]
@@ -82,9 +105,22 @@ export function applyEvent(view: RunView, e: Event): RunView {
         procId: e.procId,
       })
       break
-    case 'log':
+    case 'log': {
       push(next, e, 'log', e.message, { level: e.level })
+      const partial = PARTIAL_FLOWS_LOG.exec(e.message)
+      if (partial && e.stageId) {
+        const target =
+          next.stages.find((s) => s.id === e.stageId)?.target ?? e.stageId.split(':')[1]
+        if (target) {
+          const ids = partial[1]!
+            .split(',')
+            .map((x) => x.trim())
+            .filter(Boolean)
+          next.partialFlows = { ...next.partialFlows, [target]: ids }
+        }
+      }
       break
+    }
     default:
       break
   }

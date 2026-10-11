@@ -5,7 +5,13 @@ import { describe, expect, it } from 'vitest'
 import { MpfConfig, RunEventBus, RunOptions, SqliteRunStore, type Run, type Stage } from '@mpf/core'
 import type { StageContext } from '@mpf/harness'
 import type { AgentRunResult } from '@mpf/llm'
-import { READ_ONLY_BASH, readSessionLedger, runWorker, type AgentFn } from '../src/worker.ts'
+import {
+  READ_ONLY_BASH,
+  WRITE_BASH,
+  readSessionLedger,
+  runWorker,
+  type AgentFn,
+} from '../src/worker.ts'
 
 function contextFor(runDir: string): StageContext {
   const run: Run = {
@@ -117,5 +123,19 @@ describe('READ_ONLY_BASH', () => {
     expect(allowed('sort -u ids.txt | uniq -c')).toBe(true)
     expect(allowed("sed -i '' 's/a/b/' App.kt")).toBe(false)
     expect(allowed('rm -rf build')).toBe(false)
+  })
+})
+
+describe('WRITE_BASH', () => {
+  const allowed = (cmd: string) => WRITE_BASH.some((re) => re.test(cmd))
+  it('lets a writing worker move, copy, make, and remove relative paths only', () => {
+    expect(allowed('mv probe.swift main.swift')).toBe(true)
+    expect(allowed('cp -R src/logic scratch/logic')).toBe(true)
+    expect(allowed('mkdir -p scratch/harness')).toBe(true)
+    expect(allowed('rm -rf scratch')).toBe(true)
+    expect(allowed('rm -rf /')).toBe(false)
+    expect(allowed('rm -rf /Users/someone')).toBe(false)
+    expect(allowed('cp secret.txt /tmp/out')).toBe(false)
+    expect(allowed('mv -- -weird x')).toBe(false)
   })
 })

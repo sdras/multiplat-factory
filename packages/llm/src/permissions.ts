@@ -60,6 +60,9 @@ export function decide(
       }
       rest = cmd.slice(cd[0].length)
     }
+    // Leading `NAME=value` assignments (`S=/path; ls $S`, `FOO=1 cargo test`) are not commands; judge what follows.
+    // The path scan below still sees the whole line, so an assignment cannot smuggle a path in.
+    rest = withoutLeadingAssignments(rest)
     // Every command in a `for … do … done` loop or a `;`/`&&`/`||` sequence must be allowed on its own;
     // workers read several files this way and the loop is only as safe as its body.
     const parts = commandsOf(rest)
@@ -126,7 +129,7 @@ function absolutePaths(cmd: string): string[] {
  */
 export function commandsOf(line: string): string[] {
   const trimmed = line.trim()
-  const loop = /^for\s+\w+\s+in\s[^;]*;\s*do\s/.exec(trimmed)
+  const loop = /^for\s+\w+\s+in\s[^;\n]*[;\n]\s*do\s/.exec(trimmed)
   if (loop) {
     const after = trimmed.slice(loop[0].length)
     const end = after.lastIndexOf('done')
@@ -134,8 +137,28 @@ export function commandsOf(line: string): string[] {
       return commandsOf(after.slice(0, end).replace(/[;\s]+$/, ''))
     }
   }
+  // Newlines separate commands the same way `;` does.
   return trimmed
-    .split(/\s*(?:;|&&|\|\|)\s*/)
+    .split(/\s*(?:;|&&|\|\||\n)\s*/)
     .map((c) => c.trim())
     .filter(Boolean)
+}
+
+/** `S=/path; ls $S` or `FOO=1 cargo test` without the leading `NAME=value` tokens (quoted values included). */
+export function withoutLeadingAssignments(line: string): string {
+  let rest = line
+  for (;;) {
+    const m = /^[A-Za-z_]\w*=/.exec(rest)
+    if (!m) return rest
+    let i = m[0].length
+    const quote = rest[i]
+    if (quote === '"' || quote === "'") {
+      const end = rest.indexOf(quote, i + 1)
+      i = end < 0 ? rest.length : end + 1
+    } else {
+      while (i < rest.length && !/\s/.test(rest[i]!)) i++
+    }
+    rest = rest.slice(i).trimStart()
+    if (rest.startsWith(';')) rest = rest.slice(1).trimStart()
+  }
 }

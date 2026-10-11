@@ -21,7 +21,7 @@ import {
   type TargetContext,
   type TestOutcome,
 } from '@mpf/adapters'
-import { READ_ONLY_BASH, runWorker, workerFailure, type AgentFn } from '@mpf/analyzer'
+import { READ_ONLY_BASH, WRITE_BASH, runWorker, workerFailure, type AgentFn } from '@mpf/analyzer'
 import { runAgent } from '@mpf/llm'
 import { GENERATE_SYSTEM, buildFixPrompt, generatePrompt, testFixPrompt } from './prompts.ts'
 
@@ -208,7 +208,7 @@ export function generateStage(config: MpfConfig, deps: TargetDeps = {}): StageRu
           budgetShare: 0.35 / Math.max(1, ctx.run.targets.length),
           cwd: tctx.workspace,
           readDirs,
-          bashAllow: [...adapter.bashAllow, ...READ_ONLY_BASH],
+          bashAllow: [...adapter.bashAllow, ...WRITE_BASH, ...READ_ONLY_BASH],
           systemPrompt: `${GENERATE_SYSTEM}\n\n# Project conventions\n${adapter.workerPrompt(tctx)}`,
           prompt: generatePrompt({
             target,
@@ -334,7 +334,7 @@ export function buildStage(config: MpfConfig, deps: TargetDeps = {}): StageRunne
             budgetShare: perTarget(ctx, BUILD_FIX_SHARE),
             cwd: tctx.workspace,
             readDirs: [join(ctx.run.runDir, 'source')],
-            bashAllow: [...adapter.bashAllow, ...READ_ONLY_BASH],
+            bashAllow: [...adapter.bashAllow, ...WRITE_BASH, ...READ_ONLY_BASH],
             systemPrompt: `${GENERATE_SYSTEM}\n\n# Project conventions\n${adapter.workerPrompt(tctx)}`,
             prompt: buildFixPrompt(result.diagnostics, result.logTail, round + 1, maxRounds),
             outputSchema: GenerateResult,
@@ -484,7 +484,7 @@ export function testStage(config: MpfConfig, deps: TargetDeps = {}): StageRunner
         if (partialFailures.size)
           ctx.log(
             'warn',
-            `${partialFailures.size} failing flow(s) contain a skipped custom step and do not block the target: ${[...partialFailures].join(', ')}`,
+            `${partialFailures.size} failing flow(s) contain a step the compiler could not express and do not block the target: ${[...partialFailures].join(', ')}`,
           )
         const summary = results
           .map((r) => `${r.kind} ${r.status} ${r.summary.passed}/${r.summary.total}`)
@@ -533,7 +533,7 @@ export function testStage(config: MpfConfig, deps: TargetDeps = {}): StageRunner
             budgetShare: perTarget(ctx, TEST_FIX_SHARE),
             cwd: tctx.workspace,
             readDirs: [join(ctx.run.runDir, 'source')],
-            bashAllow: [...adapter.bashAllow, ...READ_ONLY_BASH],
+            bashAllow: [...adapter.bashAllow, ...WRITE_BASH, ...READ_ONLY_BASH],
             systemPrompt: `${GENERATE_SYSTEM}\n\n# Project conventions\n${adapter.workerPrompt(tctx)}`,
             prompt: testFixPrompt(
               results,

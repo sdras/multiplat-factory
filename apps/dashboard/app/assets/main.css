@@ -714,6 +714,55 @@ label.k {
   border-color: var(--warn);
 }
 
+/* `.panel` and `.badge` are the pre-HUD names the tests, critic, and core pages still use; same look as pane and tag. */
+.panel {
+  padding: 14px 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-width: 0;
+  border: 1px solid var(--rule);
+  border-radius: 2px;
+}
+.panel + .panel {
+  margin-top: 14px;
+}
+.badge {
+  display: inline-flex;
+  align-items: center;
+  height: 18px;
+  padding: 0 6px;
+  border: 1px solid var(--rule);
+  border-radius: 2px;
+  font-family: var(--font-display);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--ink-2);
+  white-space: nowrap;
+}
+.badge.pass,
+.badge.ok,
+.badge.succeeded {
+  color: var(--good);
+  border-color: var(--good);
+}
+.badge.fail,
+.badge.error,
+.badge.blocked,
+.badge.escalate {
+  color: var(--bad);
+  border-color: var(--bad);
+}
+.badge.skip,
+.badge.flaky,
+.badge.fix,
+.badge.warn {
+  color: var(--warn);
+  border-color: var(--warn);
+}
+
 /* Tables */
 table {
   width: 100%;

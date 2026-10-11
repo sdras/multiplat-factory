@@ -32,7 +32,10 @@ export function rawRouteUrl(baseUrl: string, spec: AppSpec, route: string): stri
     spec.screens.find((s) => s.id === spec.navigation.root)?.route ??
     spec.screens.find((s) => s.route)?.route ??
     '#/'
-  return routeUrl(baseUrl, { route: sample.startsWith('#') ? `#/${route}` : `/${route}` } as Screen)
+  // Hash routing (`#/active`, or `/app#/active` under a sub-path) keeps the path and swaps the fragment.
+  const hashAt = sample.indexOf('#')
+  const raw = hashAt >= 0 ? `${sample.slice(0, hashAt)}#/${route}` : `/${route}`
+  return routeUrl(baseUrl, { route: raw } as Screen)
 }
 
 export function routeUrl(baseUrl: string, screen: Screen | undefined): string {
@@ -58,11 +61,23 @@ const ROLE_BY_KIND: Record<Element['kind'], string | undefined> = {
 }
 
 /**
- * Find an AppSpec element on the page, most specific strategy first. With `text`, only candidates
- * whose text content contains it count: rows of a list share one test id, and the step names the
- * row by what it shows.
+ * Find an AppSpec element on the page, most specific strategy first: the spec's own mapping onto
+ * the original app's markup (`sourceSelector`, all a hookless source has), then the test hooks,
+ * then the accessible name. With `text`, only candidates whose text content contains it count:
+ * rows of a list share one test id, and the step names the row by what it shows.
  */
 export async function resolveElement(
+  page: Page,
+  spec: AppSpec,
+  elementId: string,
+  text?: string,
+): Promise<Locator | undefined> {
+  const all = await resolveAll(page, spec, elementId, text)
+  return all?.first()
+}
+
+/** Every element on the page that the spec element matches (repeated rows match many); undefined when none. */
+export async function resolveAll(
   page: Page,
   spec: AppSpec,
   elementId: string,
@@ -71,6 +86,8 @@ export async function resolveElement(
   const el = spec.screens.flatMap((s) => s.elements).find((e) => e.id === elementId)
   if (!el) return undefined
   const candidates: Locator[] = []
+  const selector = el.sourceSelector?.trim()
+  if (selector) candidates.push(page.locator(selector))
   if (el.testId) {
     candidates.push(page.locator(`[data-testid="${css(el.testId)}"]`))
     candidates.push(page.locator(`[data-test="${css(el.testId)}"]`))
@@ -92,6 +109,8 @@ export async function resolveElement(
     candidates.push(page.getByPlaceholder(loose))
     candidates.push(page.getByText(loose))
   }
+  // Hookless apps: specs often lift a class name into the id (`.new-todo` becomes `new-todo`).
+  if (el.testId) candidates.push(page.locator(`[class~="${css(el.testId)}"]`))
   for (const [i, candidate] of candidates.entries()) {
     const c = text === undefined ? candidate : candidate.filter({ hasText: text })
     try {
@@ -100,9 +119,37 @@ export async function resolveElement(
           .first()
           .waitFor({ state: 'attached', timeout: 1500 })
           .catch(() => {})
-      if ((await c.count()) > 0) return c.first()
+      if ((await c.count()) > 0) return c
     } catch {
       /* try next */
+    }
+  }
+  // A text qualifier on a leaf control (a row's checkbox or delete button) names the row, not the
+  // control: narrow the ancestor part of a descendant selector by the text, then descend again.
+  if (text !== undefined && selector) {
+    const parts = selector.split(/\s+(?![^[]*\])/).filter(Boolean)
+    for (let i = parts.length - 1; i >= 1; i--) {
+      const scoped = page
+        .locator(parts.slice(0, i).join(' '), { hasText: text })
+        .locator(parts.slice(i).join(' '))
+      try {
+        if ((await scoped.count()) > 0) return scoped
+      } catch {
+        /* try a shorter ancestor */
+      }
+    }
+  }
+  if (text !== undefined) {
+    // Hook-based leaf controls: the nearest list row or table row that carries the text.
+    for (const candidate of candidates) {
+      const scoped = page
+        .locator('li, tr, [role="listitem"], [role="row"], article', { hasText: text })
+        .locator(candidate)
+      try {
+        if ((await scoped.count()) > 0) return scoped
+      } catch {
+        /* try next */
+      }
     }
   }
   return undefined
@@ -169,9 +216,37 @@ export async function executeBehavior(
   const work = (async (): Promise<StepResult> => {
     let navigated = false
     const notes: string[] = []
-    const goto = async (screenId: string) => {
-      await page.goto(routeUrl(baseUrl, screenOf(screenId)), { waitUntil: 'load' })
+    /**
+     * Open a URL the way a user reaches it: a change of hash on the page already open is a fragment
+     * change (hash routing keeps in-memory state), anything else is a full navigation.
+     */
+    const open = async (url: string) => {
+      const target = new URL(url)
+      let here: URL | undefined
+      try {
+        here = new URL(page.url())
+      } catch {
+        here = undefined
+      }
+      const sameDocument =
+        here !== undefined &&
+        here.origin === target.origin &&
+        here.pathname === target.pathname &&
+        here.search === target.search &&
+        (target.hash !== '' || here.hash !== '')
+      if (sameDocument) {
+        await page.evaluate((hash: string) => {
+          // The page's window; this package compiles without the DOM lib.
+          ;(globalThis as unknown as { location: { hash: string } }).location.hash = hash || '#'
+        }, target.hash)
+        await page.waitForTimeout(150)
+        return
+      }
+      await page.goto(url, { waitUntil: 'load' })
       await page.waitForLoadState('networkidle', { timeout: 3000 }).catch(() => {})
+    }
+    const goto = async (screenId: string) => {
+      await open(routeUrl(baseUrl, screenOf(screenId)))
       navigated = true
     }
     const first = behavior.steps[0]?.op
@@ -185,8 +260,7 @@ export async function executeBehavior(
             await goto(step.screen)
             break
           case 'openRoute':
-            await page.goto(rawRouteUrl(baseUrl, spec, step.route), { waitUntil: 'load' })
-            await page.waitForLoadState('networkidle', { timeout: 3000 }).catch(() => {})
+            await open(rawRouteUrl(baseUrl, spec, step.route))
             navigated = true
             break
           case 'seed': {
@@ -198,9 +272,15 @@ export async function executeBehavior(
             await page.reload({ waitUntil: 'load' })
             break
           }
-          case 'tap': {
+          case 'tap':
+          case 'doubleTap':
+          case 'longPress': {
             const loc = await need(page, spec, step.element, at, step.text)
-            await loc.click({ timeout: 5000 })
+            await robustClick(page, loc, {
+              clickCount: step.op === 'doubleTap' ? 2 : 1,
+              // A held click is the web's press-and-hold: mouse down, a pause, mouse up.
+              delay: step.op === 'longPress' ? 650 : undefined,
+            })
             break
           }
           case 'type': {
@@ -215,12 +295,16 @@ export async function executeBehavior(
               }
               break
             }
+            // A trailing newline means "submit": fill the text, then press Enter (the way a user adds a todo).
+            const submit = step.text.endsWith('\n')
+            const typed = submit ? step.text.replace(/\n$/, '') : step.text
             try {
-              await loc.fill(step.text, { timeout: 5000 })
+              await loc.fill(typed, { timeout: 5000 })
             } catch {
               await loc.click({ timeout: 3000 })
-              await page.keyboard.type(step.text)
+              await page.keyboard.type(typed)
             }
+            if (submit) await loc.press('Enter', { timeout: 3000 })
             break
           }
           case 'select': {
@@ -258,9 +342,18 @@ export async function executeBehavior(
             const read = () => visibleText(loc)
             const ok = await poll(async () => {
               const text = (await read()).trim()
-              return step.exact
-                ? text === step.text
-                : text.toLowerCase().includes(step.text.toLowerCase())
+              if (
+                step.exact
+                  ? text === step.text
+                  : text.toLowerCase().includes(step.text.toLowerCase())
+              )
+                return true
+              // Repeated elements (list rows): any one of them carrying the text satisfies the step,
+              // the way the Maestro side matches a descendant.
+              const any = await resolveElement(page, spec, step.element, step.text)
+              if (!any) return false
+              const candidate = (await visibleText(any)).trim()
+              return step.exact ? candidate === step.text : true
             })
             if (!ok) {
               const actual = await read().catch(() => '')
@@ -272,9 +365,11 @@ export async function executeBehavior(
           }
           case 'expectCount': {
             // Either N elements carry the id, or one container carries it and holds N rows/items.
-            const loc = await resolveElement(page, spec, step.element)
+            let loc = await resolveAll(page, spec, step.element)
             let seen = 0
             const ok = await poll(async () => {
+              // Rows that render a moment after the previous step are not on the page at resolve time.
+              loc ??= await resolveAll(page, spec, step.element)
               const matches = loc ? await loc.count() : 0
               seen = matches
               if (matches === step.count) return true
@@ -338,6 +433,54 @@ export async function executeBehavior(
 }
 
 /** Text a user sees: the value for form controls, the rendered text otherwise. */
+/**
+ * Click the way a user manages to: a control that only appears while its row is hovered (a row's
+ * delete button) gets the row hovered first, a checkbox hidden behind its label gets the label
+ * clicked, and as a last resort the click is forced at the element's position.
+ */
+async function robustClick(
+  page: Page,
+  loc: Locator,
+  opts: { clickCount: number; delay?: number },
+): Promise<void> {
+  const click = (timeout: number, force = false) =>
+    loc.click({ timeout, force, clickCount: opts.clickCount, delay: opts.delay })
+  try {
+    await click(2500)
+    return
+  } catch {
+    /* fall through to the recovery steps */
+  }
+  const row = loc.locator(
+    'xpath=ancestor::*[self::li or self::tr or @role="row" or @role="listitem"][1]',
+  )
+  if ((await row.count().catch(() => 0)) > 0) {
+    await row
+      .first()
+      .hover({ timeout: 1500 })
+      .catch(() => {})
+    try {
+      await click(2000)
+      return
+    } catch {
+      /* next */
+    }
+  }
+  const id = await loc.getAttribute('id', { timeout: 1000 }).catch(() => null)
+  if (id && opts.clickCount === 1 && opts.delay === undefined) {
+    const label = page.locator(`label[for="${css(id)}"]`)
+    if ((await label.count().catch(() => 0)) > 0) {
+      try {
+        await label.first().click({ timeout: 2000 })
+        return
+      } catch {
+        /* next */
+      }
+    }
+  }
+  await click(3000, true)
+}
+
 async function visibleText(loc: Locator): Promise<string> {
   const tag = await loc
     .evaluate((el) => el.tagName.toLowerCase(), undefined, { timeout: 2000 })

@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { STAGE_CATALOG } from '@mpf/core/stages'
-import type { Stage } from '@mpf/core/schemas'
+import type { Stage, TestResult } from '@mpf/core/schemas'
 
 const route = useRoute()
 const id = String(route.params.id)
@@ -46,6 +46,43 @@ const pendingTitle = computed(() => {
     : undefined
   return s ? `${STAGE_CATALOG[s.kind].title}${s.target ? ` · ${s.target}` : ''}` : 'this run'
 })
+/** What happened, then what the choices do; the before-fix-loop and critic pauses both read this way. */
+const pendingLines = computed(() => reasonLines(view.value.pending?.reason ?? ''))
+const pendingAboutTests = computed(() =>
+  (view.value.pending?.reason ?? '').startsWith('Tests for '),
+)
+
+/** The source app's own suite, run by the observe stage (`test.result` with target `source`): latest per kind. */
+const ownTests = computed(() => {
+  const byKind = new Map<string, TestResult>()
+  for (const t of view.value.tests) if (t.target === 'source') byKind.set(t.kind, t)
+  return [...byKind.values()]
+    .map((t) => `${t.status} ${t.summary.passed}/${t.summary.total}`)
+    .join(' · ')
+})
+/** Findings the operator accepted at the critic's escalation, recorded on the critique stage's result. */
+const acceptedDeviations = computed(() =>
+  view.value.stages
+    .filter((s) => s.kind === 'critique')
+    .map((s) => ({ target: s.target ?? '', items: deviationTexts(s.result?.acceptedDeviations) }))
+    .filter((d) => d.items.length),
+)
+function deviationTexts(list: unknown): string[] {
+  if (!Array.isArray(list)) return []
+  return list
+    .map((d) => {
+      if (typeof d === 'string') return d
+      const desc = (d as { description?: unknown } | null)?.description
+      return typeof desc === 'string' ? desc : ''
+    })
+    .filter(Boolean)
+}
+/** Flows that failed without blocking their target: a step the compiler could not express (a custom step, an unhooked check) made them partial (from the test stage's log). */
+const partialFlows = computed(() =>
+  Object.entries(view.value.partialFlows)
+    .filter(([, ids]) => ids.length)
+    .map(([target, ids]) => ({ target, ids })),
+)
 
 const canPause = computed(() => run.value?.status === 'running')
 const canResume = computed(() => run.value?.status === 'paused')
@@ -157,49 +194,76 @@ const readmes = computed(() => [
         </div>
       </section>
 
-      <section v-if="view.pending" class="callout" style="margin-bottom: 16px">
+      <section v-if="view.pending" class="callout tall" style="margin-bottom: 16px">
         <span class="lamp live" />
-        <div class="stack" style="gap: 1px; line-height: 1.35">
+        <div class="stack body-col">
           <span class="head">Decision needed · {{ pendingTitle }}</span>
-          <span class="body">{{ view.pending.reason }}</span>
+          <span class="body reason">{{ pendingLines[0] }}</span>
+          <span v-if="pendingLines[1]" class="body reason dim">{{ pendingLines[1] }}</span>
+          <NuxtLink v-if="pendingAboutTests" :to="`/runs/${id}/tests`" class="inline small"
+            >Failing cases</NuxtLink
+          >
         </div>
-        <div class="grow" />
-        <label for="note" class="sr-only">Optional note for the worker</label>
-        <input
-          id="note"
-          v-model="note"
-          type="text"
-          placeholder="Optional note for the worker"
-          style="width: 300px"
-        />
-        <button
-          v-for="(c, i) in view.pending.choices"
-          :key="c.id"
-          type="button"
-          class="btn"
-          :class="{ primary: i === 0 }"
-          @click="answer(c.id)"
-        >
-          {{ c.label }}
-        </button>
+        <div class="row actions">
+          <label for="note" class="sr-only">Optional note for the worker</label>
+          <input
+            id="note"
+            v-model="note"
+            type="text"
+            placeholder="Optional note for the worker"
+            style="width: 300px"
+          />
+          <button
+            v-for="(c, i) in view.pending.choices"
+            :key="c.id"
+            type="button"
+            class="btn"
+            :class="{ primary: i === 0 }"
+            @click="answer(c.id)"
+          >
+            {{ c.label }}
+          </button>
+        </div>
       </section>
 
-      <section v-if="run.summary" class="callout" style="margin-bottom: 16px">
+      <section v-if="run.summary" class="callout tall" style="margin-bottom: 16px">
         <span class="lamp" />
-        <div class="stack" style="gap: 1px; line-height: 1.35">
+        <div class="stack body-col">
           <span class="head">Result</span>
           <span class="body">{{ run.summary }}</span>
+          <span v-if="ownTests" class="body small">
+            <span class="muted">source · own tests: </span><span class="mono">{{ ownTests }}</span>
+          </span>
+          <div v-for="p in partialFlows" :key="p.target" class="small dim">
+            <span class="lbl muted" style="font-size: 12px">{{ p.target }}</span>
+            · {{ p.ids.length }} failing {{ p.ids.length === 1 ? 'flow' : 'flows' }} did not block
+            the target (a step the compiler could not express):
+            <code v-for="b in p.ids" :key="b" class="flow-id">{{ b }}</code>
+          </div>
+          <div v-for="d in acceptedDeviations" :key="d.target" class="stack small" style="gap: 2px">
+            <span>
+              <span class="lbl muted" style="font-size: 12px">{{ d.target }}</span>
+              <span class="dim">
+                · {{ d.items.length }} finding{{ d.items.length === 1 ? '' : 's' }} accepted as
+                deviations</span
+              >
+            </span>
+            <ul class="list dim deviations">
+              <li v-for="(text, i) in d.items" :key="i">{{ text }}</li>
+            </ul>
+          </div>
         </div>
-        <div class="grow" />
-        <a
-          v-for="a in readmes"
-          :key="a.id"
-          :href="artifactUrl(a.id)"
-          target="_blank"
-          rel="noopener"
-          class="btn"
-          >PORT.md · {{ a.meta.target }}</a
-        >
+        <div v-if="readmes.length" class="row actions">
+          <a
+            v-for="a in readmes"
+            :key="a.id"
+            :href="artifactUrl(a.id)"
+            target="_blank"
+            rel="noopener"
+            class="btn"
+            >PORT.md · {{ a.meta.target }}</a
+          >
+        </div>
       </section>
 
       <div v-if="actionError" class="callout bad" style="margin-bottom: 16px">
@@ -374,6 +438,40 @@ const readmes = computed(() => [
   gap: 1px;
   line-height: 1.35;
   min-width: 0;
+}
+/* Decision and result callouts: a long reason wraps in its column; the controls stay together at the end. */
+.callout.tall {
+  align-items: flex-start;
+}
+.callout.tall > .lamp {
+  margin-top: 6px;
+}
+.callout .body-col {
+  flex: 1 1 360px;
+  min-width: 0;
+  gap: 4px;
+  line-height: 1.4;
+}
+.callout .reason {
+  max-width: 90ch;
+  overflow-wrap: anywhere;
+}
+.callout .actions {
+  margin-left: auto;
+  gap: 8px;
+  flex-wrap: nowrap;
+}
+.deviations {
+  padding-left: 16px;
+  max-width: 90ch;
+  line-height: 1.45;
+}
+.deviations li + li {
+  margin-top: 2px;
+}
+.flow-id {
+  margin-right: 6px;
+  color: var(--ink);
 }
 .main-grid {
   min-height: 620px;

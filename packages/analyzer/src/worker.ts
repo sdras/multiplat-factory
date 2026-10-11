@@ -25,9 +25,24 @@ export const READ_ONLY_BASH: RegExp[] = [
   /^stat\b/,
   /^pwd\b/,
   /^which\b/,
+  /^env$/,
+  /^env \|/,
+  /^printenv\b/,
   /^command -v\b/,
   /^echo\b/,
   /^git (log|status|ls-files|show|diff)\b/,
+]
+
+/**
+ * File operations a worker that may write its workspace is allowed to do from the shell: only
+ * relative paths (the sandbox keeps the cwd inside the workspace), never an absolute one, so
+ * `rm -rf /` or `cp secret /tmp` fail the allowlist before the path scan even looks.
+ */
+export const WRITE_BASH: RegExp[] = [
+  /^mkdir(?: -\w+)*(?: [^\s/-]\S*)+$/,
+  /^touch(?: [^\s/-]\S*)+$/,
+  /^(?:mv|cp)(?: -\w+)*(?: [^\s/-]\S*){2,}$/,
+  /^rm(?: -\w+)*(?: [^\s/-]\S*)+$/,
 ]
 
 /** Map a failed worker result to a stage failure; budget exhaustion is never retried with the same cap. */

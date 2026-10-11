@@ -9,6 +9,7 @@ import {
   nowIso,
   runDir as runDirFor,
   ensureDir,
+  mpfHome,
   type Artifact,
   type EventPayload,
   type MpfConfig,
@@ -76,7 +77,9 @@ export class Orchestrator {
   private lanes: Lanes
 
   constructor(private opts: OrchestratorOptions) {
-    this.lanes = new Lanes(opts.config.concurrency.lanes)
+    // The device lanes lock files under the data directory the runs live in, so another process
+    // (a second CLI, a script next to the daemon) waits for the simulator instead of sharing it.
+    this.lanes = new Lanes(opts.config.concurrency.lanes, { dataDir: opts.dataDir ?? mpfHome() })
   }
 
   get store(): RunStore {
@@ -522,7 +525,7 @@ export class Orchestrator {
       store: this.opts.store,
       bus: this.opts.bus,
       config: this.opts.config,
-      lanes: this.lanes,
+      lanes: this.lanes.withLog((message) => this.log(runId, stage.id, 'info', message)),
       signal,
       humanChoice,
       emit: (payload) => this.emit(runId, stage.id, payload),

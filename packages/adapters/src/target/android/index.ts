@@ -134,6 +134,8 @@ export const androidTarget: TargetAdapter = {
   bashAllow: [
     /^\.\/gradlew\b/,
     /^gradle\b/,
+    // Which JDK the build will use; workers check it before touching the Gradle setup.
+    /^javac? --?version\b/,
     /^(ls|cat|head|tail|wc|find|tree|grep|rg|mkdir|touch|mv|cp|rm)\b/,
     /^git (status|diff|log|ls-files)\b/,
   ],

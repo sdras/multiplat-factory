@@ -3,6 +3,7 @@ import {
   AppSpec,
   BehaviorSpec,
   CreateRunInput,
+  Element,
   Event,
   Run,
   RunOptions,
@@ -68,5 +69,18 @@ describe('schemas', () => {
     expect(Step.parse({ op: 'tap', element: 'note-row' })).not.toHaveProperty('text')
     expect(() => Step.parse({ op: 'tap', element: 'note-row', text: 3 })).toThrow()
     expect(JSON.stringify(toJsonSchema(BehaviorSpec))).toContain('whose visible text contains')
+  })
+
+  it('accepts an optional sourceSelector on elements and keeps testId as the port hook', () => {
+    const hookless = { id: 'new-todo', kind: 'input', label: 'New todo', testId: 'new-todo' }
+    expect(Element.parse(hookless)).not.toHaveProperty('sourceSelector')
+    expect(Element.parse({ ...hookless, sourceSelector: '.new-todo' })).toMatchObject({
+      testId: 'new-todo',
+      sourceSelector: '.new-todo',
+    })
+    expect(() => Element.parse({ ...hookless, sourceSelector: 3 })).toThrow()
+    expect(JSON.stringify(toJsonSchema(AppSpec))).toContain(
+      'on the original app when it has no test hook',
+    )
   })
 })

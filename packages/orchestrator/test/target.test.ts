@@ -444,8 +444,7 @@ describe('flow retries and partial flows', () => {
     expect(adapter.calls.filter((c) => c === 'e2e')).toHaveLength(1)
     const warned = events.some(
       (e) =>
-        e.type === 'log' &&
-        /skipped custom step and do not block the target: B-001/.test(e.message),
+        e.type === 'log' && /could not express and do not block the target: B-001/.test(e.message),
     )
     expect(warned).toBe(true)
   })

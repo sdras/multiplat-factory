@@ -47,18 +47,19 @@ export function specStage(_config: MpfConfig, deps: AnalysisDeps = {}): StageRun
         return workerFailure(result, 'worker produced no AppSpec')
       let spec = AppSpec.parse(result.structured)
       let cost = result.costUsd
-      // Ids that do not exist in the source verify nothing; give the worker one round to map them.
+      // Ids that do not exist in the source verify nothing; give the worker one round to map them,
+      // by hook or, where the source has none, by a sourceSelector.
       const hooks = inventory.hints.testHooks
       if (!hooks.length)
         ctx.log(
           'warn',
-          'the inventory found no test hooks in the source; element ids cannot be checked against it and observation can only match visible text',
+          'the inventory found no test hooks in the source; elements can only be found on it through their sourceSelector (web: a CSS selector, mobile: the visible label)',
         )
       let unmatched = unmatchedTestIds(spec, hooks)
       if (unmatched.length && result.sessionId) {
         ctx.log(
           'warn',
-          `${unmatched.length} element testIds match no test hook in the source; asking the worker to map them`,
+          `${unmatched.length} elements match no test hook in the source and carry no sourceSelector; asking the worker to map them`,
         )
         const repair = await runWorker(
           ctx,
@@ -85,7 +86,7 @@ export function specStage(_config: MpfConfig, deps: AnalysisDeps = {}): StageRun
         }
         ctx.log(
           unmatched.length ? 'warn' : 'info',
-          `${unmatched.length} element testIds still match no source hook after repair`,
+          `${unmatched.length} elements still have neither a source hook nor a sourceSelector after repair`,
         )
       }
       writeFileSync(join(ctx.run.runDir, 'appspec.json'), JSON.stringify(spec, null, 2))

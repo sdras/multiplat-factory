@@ -34,6 +34,130 @@ const pageHtml = `<!doctype html>
 </html>
 `
 
+/**
+ * TodoMVC markup, served at /todo: no test hooks anywhere, only classes, one id, a placeholder, and
+ * hrefs, as public web apps usually come. Clearing completed items removes the completed rows.
+ */
+const todoHtml = `<!doctype html>
+<html>
+  <body>
+    <style>.destroy { display: none } li:hover .destroy { display: inline-block } .edit { display: none } li.editing .edit { display: inline-block }</style>
+    <section class="todoapp" ondblclick="const li = event.target.closest('li'); if (li && event.target.tagName === 'LABEL') { li.classList.add('editing'); if (!li.querySelector('.edit')) { const i = document.createElement('input'); i.className = 'edit'; i.value = event.target.textContent; li.appendChild(i) } }" onclick="if (event.target.classList.contains('destroy')) event.target.closest('li').remove()">
+      <header class="header">
+        <h1>todos</h1>
+        <input class="new-todo" placeholder="What needs to be done?" autofocus onkeydown="if (event.key === 'Enter' && this.value.trim()) { const li = document.createElement('li'); li.innerHTML = '<div class=&quot;view&quot;><input class=&quot;toggle&quot; type=&quot;checkbox&quot;><label>' + this.value.trim() + '</label><button class=&quot;destroy&quot;></button></div>'; document.querySelector('.todo-list').appendChild(li); this.value = '' }">
+      </header>
+      <main class="main">
+        <div class="toggle-all-container">
+          <input id="toggle-all" class="toggle-all" type="checkbox">
+          <label for="toggle-all">Mark all as complete</label>
+        </div>
+        <ul class="todo-list">
+          <li class="completed"><div class="view"><input class="toggle" type="checkbox" checked><label>First todo</label><button class="destroy"></button></div></li>
+          <li><div class="view"><input class="toggle" type="checkbox"><label>Second todo</label><button class="destroy"></button></div></li>
+          <li><div class="view"><input class="toggle" type="checkbox"><label>Third todo</label><button class="destroy"></button></div></li>
+        </ul>
+      </main>
+      <footer class="footer">
+        <span class="todo-count"><strong>2</strong> items left</span>
+        <ul class="filters">
+          <li><a href="#/" class="selected">All</a></li>
+          <li><a href="#/active">Active</a></li>
+          <li><a href="#/completed">Completed</a></li>
+        </ul>
+        <button class="clear-completed">Clear completed</button>
+      </footer>
+    </section>
+    <script>
+      document.querySelector('.clear-completed').addEventListener('click', () => {
+        for (const li of document.querySelectorAll('.todo-list li.completed')) li.remove()
+      })
+    </script>
+  </body>
+</html>
+`
+
+/** The spec a worker writes for it: invented testIds the port will add, plus the source's own selectors. */
+const todoSpec: AppSpec = {
+  name: 'Todos',
+  source: { platform: 'web', framework: 'vue', language: 'javascript', entry: 'index.html' },
+  screens: [
+    {
+      id: 'todos',
+      name: 'Todos',
+      route: '/todo',
+      purpose: 'p',
+      elements: [
+        // Found only through the selector: the label matches no placeholder or text on the page.
+        {
+          id: 'new-todo',
+          kind: 'input',
+          label: 'New todo',
+          testId: 'new-todo-input',
+          sourceSelector: '.new-todo',
+        },
+        // No selector and no accessible name: the class token equal to the testId is all there is.
+        { id: 'destroy', kind: 'button', label: 'Delete', testId: 'destroy' },
+        // Appears only on double click, the TodoMVC way.
+        {
+          id: 'edit-input',
+          kind: 'input',
+          label: 'Edit todo',
+          testId: 'edit',
+          sourceSelector: 'li.editing .edit',
+        },
+        // A leaf control whose text lives on its row.
+        {
+          id: 'row-toggle',
+          kind: 'toggle',
+          label: 'Toggle todo',
+          testId: 'todo-toggle',
+          sourceSelector: 'ul.todo-list li input.toggle',
+        },
+        // The one real hook on the page, an HTML id.
+        { id: 'toggle-all', kind: 'toggle', label: 'Toggle all', testId: 'toggle-all' },
+        {
+          id: 'todo-label',
+          kind: 'text',
+          label: 'Todo title',
+          testId: 'todo-label',
+          sourceSelector: '.todo-list li label',
+        },
+        {
+          id: 'todo-list',
+          kind: 'list',
+          label: 'Todo list',
+          testId: 'todo-list',
+          sourceSelector: '.todo-list',
+        },
+        {
+          id: 'filter-active',
+          kind: 'link',
+          label: 'Active',
+          testId: 'filter-active',
+          sourceSelector: 'a[href="#/active"]',
+        },
+        {
+          id: 'clear-completed',
+          kind: 'button',
+          label: 'Clear completed',
+          testId: 'clear-completed',
+          sourceSelector: 'button.clear-completed',
+        },
+      ],
+      navigatesTo: [],
+    },
+  ],
+  navigation: { style: 'routes', root: 'todos', edges: [] },
+  state: { entities: {}, storeStyle: 'x', persistence: [] },
+  logic: [],
+  integrations: [],
+  assets: [],
+  permissions: [],
+  platformFeatures: [],
+  unknowns: [],
+}
+
 const spec: AppSpec = {
   name: 'Notes',
   source: {
@@ -82,9 +206,9 @@ describe.skipIf(!browser)('web executor', () => {
   let server: Server
   let baseUrl: string
   beforeAll(async () => {
-    server = createServer((_req, res) => {
+    server = createServer((req, res) => {
       res.setHeader('content-type', 'text/html')
-      res.end(pageHtml)
+      res.end(req.url?.startsWith('/todo') ? todoHtml : pageHtml)
     })
     await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve))
     baseUrl = `http://127.0.0.1:${(server.address() as AddressInfo).port}/`
@@ -132,5 +256,156 @@ describe.skipIf(!browser)('web executor', () => {
     )
     expect(missing.ok).toBe(false)
     expect(missing.error).toContain('element "note-row" with text "Fourth" not found')
+  }, 30_000)
+
+  it('finds hookless elements by sourceSelector, class token, and HTML id', async () => {
+    const context = await browser!.newContext()
+    const page = await context.newPage()
+    try {
+      await page.goto(`${baseUrl}todo`)
+      const attr = async (elementId: string, name: string, text?: string) => {
+        const loc = await resolveElement(page, todoSpec, elementId, text)
+        return loc ? loc.getAttribute(name) : undefined
+      }
+      // `.new-todo` by selector: nothing on the page carries the spec's label or testId.
+      expect(await attr('new-todo', 'placeholder')).toBe('What needs to be done?')
+      // `[class~="destroy"]`: a label-less button whose class the spec reused as its testId.
+      expect(await attr('destroy', 'class')).toBe('destroy')
+      // `#toggle-all`: the one id on the page.
+      expect(await attr('toggle-all', 'type')).toBe('checkbox')
+      // The text qualifier still narrows a selector that matches several rows.
+      const second = await resolveElement(page, todoSpec, 'todo-label', 'Second')
+      expect(await second?.textContent()).toBe('Second todo')
+      expect(await resolveElement(page, todoSpec, 'todo-label', 'Fourth')).toBeUndefined()
+      expect(await attr('filter-active', 'href')).toBe('#/active')
+    } finally {
+      await context.close()
+    }
+  }, 30_000)
+
+  it('changes the hash in place on a hash-routed app so in-memory state survives', async () => {
+    // The same page under hash routes: the added row lives only in the DOM, so a reload would lose it.
+    const hashSpec: AppSpec = {
+      ...todoSpec,
+      screens: [
+        { ...todoSpec.screens[0]!, route: '/todo#/' },
+        {
+          ...todoSpec.screens[0]!,
+          id: 'todos-active',
+          name: 'Active',
+          route: '/todo#/active',
+          elements: [],
+        },
+      ],
+      navigation: { style: 'routes', root: 'todos', edges: [] },
+    }
+    const r = await executeBehavior(
+      browser!,
+      baseUrl,
+      hashSpec,
+      {
+        ...behavior([
+          { op: 'type', element: 'new-todo', text: 'Fourth todo\n' },
+          { op: 'navigate', screen: 'todos-active' },
+          { op: 'expectCount', element: 'todo-label', count: 4 },
+          { op: 'openRoute', route: 'nope' },
+          { op: 'expectCount', element: 'todo-label', count: 4 },
+        ]),
+        screen: 'todos',
+      },
+      undefined,
+      () => {},
+    )
+    expect(r.ok, r.error).toBe(true)
+  }, 30_000)
+
+  it('counts every element a repeated selector matches, not only the first', async () => {
+    const r = await executeBehavior(
+      browser!,
+      baseUrl,
+      todoSpec,
+      { ...behavior([{ op: 'expectCount', element: 'todo-label', count: 3 }]), screen: 'todos' },
+      undefined,
+      () => {},
+    )
+    expect(r.ok, r.error).toBe(true)
+  }, 30_000)
+
+  it('clicks a hover-only row control and opens an editor with a double tap', async () => {
+    const r = await executeBehavior(
+      browser!,
+      baseUrl,
+      todoSpec,
+      {
+        ...behavior([
+          { op: 'tap', element: 'destroy', text: 'Second todo' },
+          { op: 'expectCount', element: 'todo-label', count: 2 },
+          { op: 'doubleTap', element: 'todo-label', text: 'Third todo' },
+          { op: 'expectVisible', element: 'edit-input' },
+          { op: 'expectText', element: 'edit-input', text: 'Third todo', exact: true },
+        ]),
+        screen: 'todos',
+      },
+      undefined,
+      () => {},
+    )
+    expect(r.ok, r.error).toBe(true)
+  }, 30_000)
+
+  it('narrows a descendant selector by the row text when the control itself has none', async () => {
+    const page = await browser!.newPage()
+    await page.goto(`${baseUrl}todo`)
+    const second = await resolveElement(page, todoSpec, 'row-toggle', 'Second todo')
+    expect(second).toBeDefined()
+    await second!.check()
+    expect(await page.locator('ul.todo-list li').nth(1).locator('input.toggle').isChecked()).toBe(
+      true,
+    )
+    expect(await page.locator('ul.todo-list li').nth(2).locator('input.toggle').isChecked()).toBe(
+      false,
+    )
+    await page.close()
+  }, 30_000)
+
+  it('submits a typed text that ends with a newline by pressing Enter', async () => {
+    const r = await executeBehavior(
+      browser!,
+      baseUrl,
+      todoSpec,
+      {
+        ...behavior([
+          { op: 'type', element: 'new-todo', text: 'Fourth todo\n' },
+          { op: 'expectText', element: 'todo-label', text: 'Fourth todo', exact: true },
+          { op: 'expectCount', element: 'todo-list', count: 4 },
+        ]),
+        screen: 'todos',
+      },
+      undefined,
+      () => {},
+    )
+    expect(r.ok, r.error).toBe(true)
+  }, 30_000)
+
+  it('runs a behavior on a hookless app through its selectors', async () => {
+    const result = await executeBehavior(
+      browser!,
+      baseUrl,
+      todoSpec,
+      {
+        ...behavior([
+          { op: 'type', element: 'new-todo', text: 'Buy milk' },
+          { op: 'expectText', element: 'new-todo', text: 'Buy milk', exact: true },
+          { op: 'expectCount', element: 'todo-list', count: 3 },
+          { op: 'tap', element: 'clear-completed' },
+          { op: 'expectCount', element: 'todo-list', count: 2 },
+          // The completed first row is gone; the selector now lands on the second.
+          { op: 'expectText', element: 'todo-label', text: 'Second todo', exact: true },
+        ]),
+        screen: 'todos',
+      },
+      undefined,
+      log,
+    )
+    expect(result).toEqual({ ok: true })
   }, 30_000)
 })

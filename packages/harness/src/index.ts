@@ -1,5 +1,18 @@
 export { runProcess, tryOutput, which, type ProcessResult, type RunProcessOptions } from './exec.ts'
-export { Lanes, type LaneLimits, type LaneName } from './lanes.ts'
+export {
+  EXCLUSIVE_LANES,
+  Lanes,
+  type LaneLimits,
+  type LaneName,
+  type LaneOptions,
+} from './lanes.ts'
+export {
+  LANE_LOCK_DEFAULTS,
+  acquireLaneLock,
+  laneLockPath,
+  type LaneLockHolder,
+  type LaneLockOptions,
+} from './lanelock.ts'
 export { ALL_CHECKS, deriveLlm, deriveTargets, runDoctor } from './toolchain/doctor.ts'
 export type { CheckContext, CheckFn } from './toolchain/types.ts'
 export { resolveAndroidHome, resolveJavaHome } from './toolchain/checks/android.ts'

@@ -39,13 +39,37 @@ const latestResults = computed(() => {
   for (const t of view.value.tests) byKey.set(`${t.target}:${t.kind}`, t)
   return [...byKey.values()]
 })
+/** Behaviors whose flow has a step the compiler could not express (a custom step, an unhooked check): a failure there does not block the target (the test stage's log says so). */
+const partialOf = (target: string) => view.value.partialFlows[target] ?? []
 const failing = computed(() =>
   latestResults.value.flatMap((t) =>
     t.cases
       .filter((c) => c.status === 'fail' || c.status === 'flaky')
-      .map((c) => ({ target: t.target, kind: t.kind, ...c })),
+      .map((c) => ({
+        target: t.target,
+        kind: t.kind,
+        ...c,
+        partial: !!c.behaviorId && partialOf(t.target).includes(c.behaviorId),
+        // A system dialog over the app explains the whole failure; the evidence summary leads with it.
+        ...splitDialogLine(c.message),
+      })),
   ),
 )
+const failingCounts = computed(() => {
+  const n = { fail: 0, flaky: 0, partial: 0 }
+  for (const c of failing.value) {
+    if (c.partial) n.partial++
+    else if (c.status === 'flaky') n.flaky++
+    else n.fail++
+  }
+  return [
+    n.fail ? `${n.fail} failing` : '',
+    n.flaky ? `${n.flaky} flaky` : '',
+    n.partial ? `${n.partial} partial (a step the compiler could not express, not blocking)` : '',
+  ]
+    .filter(Boolean)
+    .join(' · ')
+})
 
 /** Golden-vector parity: one row per vector, one column per host that ran it (the core itself, then each target). */
 const parity = computed(() => {
@@ -100,6 +124,8 @@ const parity = computed(() => {
                     {{ latest(t, k)!.summary.passed }}/{{ latest(t, k)!.summary.total
                     }}<span v-if="latest(t, k)!.summary.flaky">
                       · {{ latest(t, k)!.summary.flaky }} flaky</span
+                    ><span v-if="k === 'e2e' && partialOf(t).length">
+                      · {{ partialOf(t).length }} partial</span
                     ></span
                   >
                   <div v-if="latest(t, k)!.skipReason" class="muted" style="font-size: 12px">
@@ -117,7 +143,9 @@ const parity = computed(() => {
       </div>
 
       <template v-if="failing.length">
-        <h2>Failing and flaky cases</h2>
+        <h2>
+          Failing and flaky cases <span class="muted small">{{ failingCounts }}</span>
+        </h2>
         <div class="panel">
           <table>
             <thead>
@@ -137,10 +165,20 @@ const parity = computed(() => {
                   {{ c.name }} <code v-if="c.behaviorId" class="muted">{{ c.behaviorId }}</code>
                 </td>
                 <td>
-                  <span class="badge" :class="c.status">{{ c.status }}</span>
+                  <span
+                    v-if="c.partial"
+                    class="tag warn"
+                    title="This flow has a step the compiler could not express, so its failure does not block the target"
+                    >partial</span
+                  >
+                  <span v-else class="badge" :class="c.status">{{ c.status }}</span>
                 </td>
-                <td class="muted" style="white-space: pre-wrap; font-size: 12px">
-                  {{ c.message }}
+                <td style="font-size: 12px">
+                  <div v-if="c.dialog" class="dialog">
+                    <UiIcon name="warn" :size="12" />
+                    <b>{{ c.dialog }}</b>
+                  </div>
+                  <span class="muted" style="white-space: pre-wrap">{{ c.rest }}</span>
                 </td>
               </tr>
             </tbody>
@@ -211,3 +249,19 @@ const parity = computed(() => {
     </template>
   </div>
 </template>
+
+<style scoped>
+/* The dialog line explains the failure on its own, so it leads the message in the warning color. */
+.dialog {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  color: var(--warn);
+  margin-bottom: 4px;
+  line-height: 1.4;
+}
+.dialog svg {
+  flex-shrink: 0;
+  margin-top: 2px;
+}
+</style>
