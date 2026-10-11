@@ -1,7 +1,7 @@
 /**
  * Green web scaffold: Vite + TypeScript, no framework beyond the one requested.
  * Conventions mirror the mobile scaffolds: routes = AppSpec screen ids behind a hash
- * router (`#/<screenId>` doubles as the deep link), `data-testid` = AppSpec testId,
+ * router (`#/<screenId>` is the deep link; a web source's own route is the canonical hash), `data-testid` = AppSpec testId,
  * a `store.ts` over localStorage with the source app's keys, and a debug-only
  * `?mpf_seed=<json>` query parameter that loads a state snapshot before first paint.
  */
@@ -33,6 +33,8 @@ export type WebFramework = 'vanilla' | 'react' | 'vue' | 'svelte'
 export interface WebScreen {
   id: string
   name: string
+  /** The source app's own route (`#/active`, `/login`); a web port keeps it as the canonical URL. */
+  route?: string
 }
 
 export interface WebProject {
@@ -43,6 +45,23 @@ export interface WebProject {
   rootScreen: string
   /** Embed the shared WebAssembly core (typed binding, parity test). */
   core?: boolean
+}
+
+/**
+ * The hash a web port uses for a screen: the source's own hash route verbatim, a path route under
+ * the hash (`/login` -> `#/login`), the bare `#/` for the root, and the screen id when the source has
+ * no usable route (a mobile source, or a path with a parameter).
+ */
+export function canonicalHash(screen: WebScreen, rootId: string): string {
+  const route = screen.route?.trim()
+  const usable = route && !/[<>{}[\]|]/.test(route) && !/(^|\/):[A-Za-z_]/.test(route)
+  if (usable) {
+    const path = route.split('?')[0] ?? ''
+    if (path.startsWith('#')) return path === '#' || path === '#/' ? '#/' : path
+    if (path === '/' || path === '') return '#/'
+    if (path.startsWith('/')) return `#${path}`
+  }
+  return screen.id === rootId ? '#/' : `#/${screen.id}`
 }
 
 export function webPackageNameFor(appName: string): string {
@@ -205,8 +224,11 @@ export default defineConfig({
 body { margin: 0; padding: 24px; max-width: 640px; margin-inline: auto; }
 `
 
-  files['src/routes.ts'] =
-    `/** Routes are the AppSpec screen ids; \`#/<id>\` in the URL is the deep link. */
+  files['src/routes.ts'] = `/**
+ * Routes are the AppSpec screen ids. The canonical hash of a screen is the source app's own route
+ * when it has one (\`#/active\`, \`/login\` becomes \`#/login\`), so links and bookmarks from the original
+ * keep working; \`#/<screenId>\` always resolves too and is the deep link the factory's flows use.
+ */
 export const Routes = {
 ${screens.map((s) => `  ${camel(s.id)}: '${s.id}',`).join('\n')}
   root: '${root.id}',
@@ -214,14 +236,28 @@ ${screens.map((s) => `  ${camel(s.id)}: '${s.id}',`).join('\n')}
 
 export const ALL_ROUTES: string[] = [${screens.map((s) => `'${s.id}'`).join(', ')}]
 
+/** Canonical hash per screen id. */
+export const ROUTE_HASH: Record<string, string> = {
+${screens.map((s) => `  '${s.id}': '${canonicalHash(s, root.id)}',`).join('\n')}
+}
+
+const hashKey = (hash: string): string => hash.replace(/^#\\/?/, '').split(/[?#]/)[0] ?? ''
+
 /** Current screen id from the hash; unknown or empty hashes resolve to the root. */
 export function currentRoute(hash: string = location.hash): string {
-  const id = hash.replace(/^#\\/?/, '').split(/[?#]/)[0] ?? ''
-  return ALL_ROUTES.includes(id) ? id : Routes.root
+  const key = hashKey(hash)
+  if (ALL_ROUTES.includes(key)) return key
+  const byRoute = Object.entries(ROUTE_HASH).find(([, h]) => hashKey(h) === key)
+  return byRoute ? byRoute[0] : Routes.root
+}
+
+/** The href a link to a screen renders: its canonical hash. */
+export function hrefFor(id: string): string {
+  return ROUTE_HASH[id] ?? (id === Routes.root ? '#/' : \`#/\${id}\`)
 }
 
 export function navigate(id: string): void {
-  location.hash = id === Routes.root ? '#/' : \`#/\${id}\`
+  location.hash = hrefFor(id)
 }
 `
 
@@ -342,12 +378,18 @@ export function ${s.ident}Screen() {
 `
     }
     files['src/App.test.tsx'] = `import { describe, expect, it } from 'vitest'
-import { currentRoute } from './routes'
+import { ALL_ROUTES, currentRoute, hrefFor } from './routes'
 
 describe('routes', () => {
   it('resolves the root for unknown hashes', () => {
     expect(currentRoute('#/nope')).toBe('${root.id}')
     expect(currentRoute('#/${root.id}')).toBe('${root.id}')
+  })
+  it('round-trips every screen through its canonical hash and its deep link', () => {
+    for (const id of ALL_ROUTES) {
+      expect(currentRoute(hrefFor(id))).toBe(id)
+      expect(currentRoute(\`#/\${id}\`)).toBe(id)
+    }
   })
 })
 `
@@ -406,7 +448,7 @@ ${screens.map((s, i) => `  <${s.ident}Screen v-${i === 0 ? 'if' : 'else-if'}="ro
     files['src/App.test.ts'] = `import { mount } from '@vue/test-utils'
 import { describe, expect, it } from 'vitest'
 import App from './App.vue'
-import { currentRoute } from './routes'
+import { ALL_ROUTES, currentRoute, hrefFor } from './routes'
 
 describe('routes', () => {
   it('resolves the root for unknown hashes', () => {
@@ -467,7 +509,7 @@ ${screens.map((s, i) => `{${i === 0 ? '#if' : ':else if'} $route === Routes.${ca
     files['src/App.test.ts'] = `import { mount, unmount } from 'svelte'
 import { describe, expect, it } from 'vitest'
 import App from './App.svelte'
-import { currentRoute } from './routes'
+import { ALL_ROUTES, currentRoute, hrefFor } from './routes'
 
 describe('routes', () => {
   it('resolves the root for unknown hashes', () => {
@@ -516,12 +558,18 @@ export function render${s.ident}(): HTMLElement {
 `
     }
     files['src/routes.test.ts'] = `import { describe, expect, it } from 'vitest'
-import { currentRoute } from './routes'
+import { ALL_ROUTES, currentRoute, hrefFor } from './routes'
 
 describe('routes', () => {
   it('resolves the root for unknown hashes', () => {
     expect(currentRoute('#/nope')).toBe('${root.id}')
     expect(currentRoute('#/${root.id}')).toBe('${root.id}')
+  })
+  it('round-trips every screen through its canonical hash and its deep link', () => {
+    for (const id of ALL_ROUTES) {
+      expect(currentRoute(hrefFor(id))).toBe(id)
+      expect(currentRoute(\`#/\${id}\`)).toBe(id)
+    }
   })
 })
 `
@@ -531,7 +579,7 @@ describe('routes', () => {
 
 - Vite + TypeScript${react ? ' + React 19 (function components, hooks)' : vue ? ' + Vue 3 (script setup, composition API)' : svelte ? ' + Svelte 5 (runes; stores for the route)' : ' (framework-free DOM code)'}. Package name \`${p.name}\`.
 - Build: \`npm run build\` (type check + vite build into \`dist/\`). Unit tests: \`npm test\` (vitest, jsdom). Keep both green.
-- Routes are the AppSpec screen ids (\`src/routes.ts\`). Every screen must stay reachable through the hash \`#/<screenId>\`; the factory's flows navigate that way. Add new screens to \`Routes\`, the switch in \`${react ? 'src/App.tsx' : vue ? 'src/App.vue' : svelte ? 'src/App.svelte' : 'src/main.ts'}\`, and \`src/screens/\`.
+- Routes are the AppSpec screen ids (\`src/routes.ts\`); the canonical hash of a screen is \`ROUTE_HASH[id]\`, the source app's own route when it has one, and links render \`hrefFor(id)\`, never a hand-written \`#/<screenId>\`. Every screen must stay reachable through the hash \`#/<screenId>\`; the factory's flows navigate that way. Add new screens to \`Routes\`, the switch in \`${react ? 'src/App.tsx' : vue ? 'src/App.vue' : svelte ? 'src/App.svelte' : 'src/main.ts'}\`, and \`src/screens/\`.
 - Every AppSpec element gets \`data-testid="<testId>"\` on the element a user interacts with (the button, the input, the text). Keep \`data-testid="mpf-root"\` on the root and \`screen-<id>\` on each screen container.
 - Every icon-only control (a \`<button>\` whose only content is an SVG, an icon-font glyph, or a character such as "+") carries \`aria-label="…"\` that says what it does ("Add item", "Increase count", "Close"), and an inline SVG inside it gets \`aria-hidden="true"\`. A screen reader must announce the action, never "plus". Buttons with visible text need no aria-label.
 - Controls repeated per row (a row's toggle, delete, or edit control) carry an \`aria-label\` that includes the row's primary text (\`Delete Buy milk\`, not \`Delete\`), so screen readers and flows can tell one row's control from another's.

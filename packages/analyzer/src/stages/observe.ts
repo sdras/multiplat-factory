@@ -261,7 +261,7 @@ async function observeMobile(
     device = sim.udid
     stop = sim.stop
     install = () => installIosApp(tools, sim.udid, app.product)
-    launch = () => launchIosApp(tools, sim.udid, app.appId)
+    launch = () => launchIosApp(tools, sim.udid, app.appId, maestro ? { maestro } : {})
     quit = () => terminateApp(tools, sim.udid, app.appId)
   } else {
     const tools = await androidTools(ctx.config, app.env)

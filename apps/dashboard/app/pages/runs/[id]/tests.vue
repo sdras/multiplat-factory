@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import type { Artifact } from '@mpf/core/schemas'
 
+const { isBoard } = useDashboardStyle()
 const route = useRoute()
 const id = String(route.params.id)
 const api = useApi()
@@ -93,20 +94,44 @@ const parity = computed(() => {
 
 <template>
   <div>
-    <p class="muted">
+    <BoardHero
+      v-if="isBoard"
+      title="Tests &amp; previews"
+      :description="
+        view.run
+          ? `Test results and screenshots for ${projectName(view.run.source.locator)}. Expand a result to see the details.`
+          : 'Compare test results and screenshots with the original app.'
+      "
+      art="tests"
+    />
+    <p v-if="!isBoard" class="muted">
       <NuxtLink :to="`/runs/${id}`">← Run</NuxtLink> ·
       <NuxtLink :to="`/runs/${id}/spec`">Spec</NuxtLink> ·
       <NuxtLink :to="`/runs/${id}/plan`">Plan</NuxtLink>
     </p>
-    <h1>Tests</h1>
+    <h1 v-if="!isBoard">Tests</h1>
     <p v-if="error" class="callout">{{ error }}</p>
     <template v-else-if="view.run">
-      <div class="panel">
+      <BoardTestSummary v-if="isBoard" :view="view" />
+      <div v-else class="panel board-table-scroll">
         <table>
           <thead>
             <tr>
               <th>Target</th>
-              <th v-for="k in kinds" :key="k">{{ k }}</th>
+              <th v-for="k in kinds" :key="k">
+                {{
+                  isBoard
+                    ? {
+                        build: 'Builds successfully',
+                        unit: 'Individual functions',
+                        launch: 'App opens',
+                        e2e: 'User flows',
+                        parity: 'Same results',
+                        screenshot: 'Screens & layout',
+                      }[k]
+                    : k
+                }}
+              </th>
             </tr>
           </thead>
           <tbody>
@@ -146,7 +171,7 @@ const parity = computed(() => {
         <h2>
           Failing and flaky cases <span class="muted small">{{ failingCounts }}</span>
         </h2>
-        <div class="panel">
+        <div class="panel board-table-scroll">
           <table>
             <thead>
               <tr>
@@ -178,7 +203,13 @@ const parity = computed(() => {
                     <UiIcon name="warn" :size="12" />
                     <b>{{ c.dialog }}</b>
                   </div>
-                  <span class="muted" style="white-space: pre-wrap">{{ c.rest }}</span>
+                  <details v-if="isBoard" class="board-test-note">
+                    <summary>Technical evidence</summary>
+                    <p class="muted" style="white-space: pre-wrap; overflow-wrap: anywhere">
+                      {{ c.rest }}
+                    </p>
+                  </details>
+                  <span v-else class="muted" style="white-space: pre-wrap">{{ c.rest }}</span>
                 </td>
               </tr>
             </tbody>
@@ -192,7 +223,7 @@ const parity = computed(() => {
           Every host runs the same golden vectors against the same WebAssembly module; a cell is one
           vector on one host.
         </p>
-        <div class="panel">
+        <div class="panel board-table-scroll">
           <table>
             <thead>
               <tr>

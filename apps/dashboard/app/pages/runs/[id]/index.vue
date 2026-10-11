@@ -2,6 +2,7 @@
 import { STAGE_CATALOG } from '@mpf/core/stages'
 import type { Stage, TestResult } from '@mpf/core/schemas'
 
+const { isBoard } = useDashboardStyle()
 const route = useRoute()
 const id = String(route.params.id)
 const api = useApi()
@@ -140,7 +141,14 @@ const readmes = computed(() => [
     </div>
 
     <template v-if="run">
-      <section class="run-head">
+      <BoardRunOverview
+        v-if="isBoard"
+        :view="view"
+        :connected="connected"
+        :elapsed="elapsed"
+        @action="act($event)"
+      />
+      <section v-if="!isBoard" class="run-head">
         <div class="row" style="gap: 12px; align-items: baseline">
           <span class="lbl muted" style="font-size: 13px">Run</span>
           <span class="mono" style="font-size: 24px; font-weight: 700; letter-spacing: 0.02em">{{
@@ -279,144 +287,166 @@ const readmes = computed(() => [
         </button>
       </div>
 
-      <section style="margin-bottom: 16px">
-        <PanelTitle
-          title="Timeline"
-          :meta="
-            finished
-              ? 'click a stage to inspect it'
-              : 'seconds since start · click a stage to inspect it'
-          "
-        />
-        <RunTimeline
-          :run="run"
-          :stages="view.stages"
-          :now="now"
-          :selected="current?.id"
-          @select="selected = $event"
-        />
-      </section>
-
-      <section class="grid-hair three main-grid">
-        <div class="left">
-          <div class="pane stage-pane">
-            <div class="panel-title">
-              <span class="l strong">{{ info ? info.title : 'Transcript' }}</span>
-              <span v-if="current?.target" class="tag">{{ current.target }}</span>
-              <StatusLamp v-if="current" :status="current.status" />
-              <span class="r" />
-              <span v-if="current" class="meta">{{ stageWindow(current, now) }}</span>
-            </div>
-            <div v-if="current?.error" class="callout bad" style="padding: 8px 12px; gap: 8px">
-              <span class="mono small" style="color: var(--bad)">{{ current.error.class }}</span>
-              <span class="body">{{ current.error.message }}</span>
-            </div>
-            <p v-if="current?.skipReason" class="hint">Skipped: {{ current.skipReason }}</p>
-            <TranscriptList :items="transcript" empty="Nothing yet for this stage." />
-            <div v-if="steerable" class="row" style="gap: 8px; flex-wrap: nowrap">
-              <label for="instruct" class="sr-only">Send an instruction to this worker</label>
-              <input
-                id="instruct"
-                v-model="instruction"
-                type="text"
-                placeholder="Send an instruction to this worker"
-                @keyup.enter="sendInstruction"
-              />
-              <button class="btn" type="button" @click="sendInstruction">
-                <UiIcon name="send" />Send
-              </button>
-            </div>
+      <details class="run-technical" :open="!isBoard">
+        <summary v-if="isBoard">Technical details, live logs &amp; controls</summary>
+        <div v-if="isBoard" class="board-toolbar">
+          <div class="row">
+            <NuxtLink
+              v-for="[path, label] in [
+                ['spec', 'App specification'],
+                ['plan', 'Build plan'],
+                ['critic', 'Quality review'],
+                ['core', 'Shared logic'],
+              ]"
+              :key="path"
+              :to="`/runs/${id}/${path}`"
+              class="btn"
+              >{{ label }}</NuxtLink
+            >
           </div>
-          <div class="pane log-pane">
-            <PanelTitle title="Run log" />
-            <TranscriptList :items="runLog" compact empty="No run-level messages yet." />
-          </div>
+          <button class="btn" :disabled="!canCancel" @click="act('/cancel')">Cancel run</button>
         </div>
+        <section style="margin-bottom: 16px">
+          <PanelTitle
+            title="Timeline"
+            :meta="
+              finished
+                ? 'click a stage to inspect it'
+                : 'seconds since start · click a stage to inspect it'
+            "
+          />
+          <RunTimeline
+            :run="run"
+            :stages="view.stages"
+            :now="now"
+            :selected="current?.id"
+            @select="selected = $event"
+          />
+        </section>
 
-        <aside class="right">
-          <div class="pane">
-            <PanelTitle
-              title="Now"
-              :meta="
-                current
-                  ? `attempt ${current.attempt}/${current.maxAttempts} · ${money(current.costUsd)}`
-                  : undefined
-              "
-            />
-            <template v-if="info && current">
-              <p style="font-size: 13px">{{ info.description }}</p>
-              <p class="small dim">
-                <span class="muted">Can go wrong · </span>{{ info.whatCanGoWrong }}
-              </p>
-              <p class="small dim"><span class="muted">You can · </span>{{ info.whatYouCanDo }}</p>
-              <div>
-                <button
-                  class="btn"
-                  type="button"
-                  :disabled="!rerunnable"
-                  @click="act(`/stages/${current.id}/rerun`)"
-                >
-                  <UiIcon name="refresh" />Re-run this stage
+        <section class="grid-hair three main-grid">
+          <div class="left">
+            <div class="pane stage-pane">
+              <div class="panel-title">
+                <span class="l strong">{{ info ? info.title : 'Transcript' }}</span>
+                <span v-if="current?.target" class="tag">{{ current.target }}</span>
+                <StatusLamp v-if="current" :status="current.status" />
+                <span class="r" />
+                <span v-if="current" class="meta">{{ stageWindow(current, now) }}</span>
+              </div>
+              <div v-if="current?.error" class="callout bad" style="padding: 8px 12px; gap: 8px">
+                <span class="mono small" style="color: var(--bad)">{{ current.error.class }}</span>
+                <span class="body">{{ current.error.message }}</span>
+              </div>
+              <p v-if="current?.skipReason" class="hint">Skipped: {{ current.skipReason }}</p>
+              <TranscriptList :items="transcript" empty="Nothing yet for this stage." />
+              <div v-if="steerable" class="row" style="gap: 8px; flex-wrap: nowrap">
+                <label for="instruct" class="sr-only">Send an instruction to this worker</label>
+                <input
+                  id="instruct"
+                  v-model="instruction"
+                  type="text"
+                  placeholder="Send an instruction to this worker"
+                  @keyup.enter="sendInstruction"
+                />
+                <button class="btn" type="button" @click="sendInstruction">
+                  <UiIcon name="send" />Send
                 </button>
               </div>
-            </template>
-            <p v-else class="hint">Select a stage on the timeline to see what it does.</p>
-          </div>
-
-          <div class="pane">
-            <BudgetTape :cost="run.costUsd" :cap="run.options.budgetUsd" :breakdown="breakdown" />
-          </div>
-
-          <div class="pane">
-            <PanelTitle title="Tests" />
-            <table v-if="view.tests.length">
-              <tbody>
-                <tr v-for="t in view.tests" :key="t.stageId + t.kind">
-                  <td class="lbl dim" style="font-size: 12px">{{ t.target }}</td>
-                  <td class="muted">{{ t.kind }}</td>
-                  <td><StatusLamp :status="t.status" /></td>
-                  <td class="num">{{ t.summary.passed }}/{{ t.summary.total }}</td>
-                </tr>
-              </tbody>
-            </table>
-            <p v-else class="hint">No results yet.</p>
-          </div>
-
-          <div class="pane">
-            <PanelTitle title="Critic" />
-            <div v-for="v in view.verdicts" :key="v.stageId + v.round" class="stack verdict">
-              <div class="row small" style="gap: 8px">
-                <span class="lbl dim" style="font-size: 12px">{{ v.target }}</span>
-                <span class="muted">round {{ v.round }}</span>
-                <StatusLamp :status="v.decision" />
-                <span class="grow" />
-                <span class="mono muted small"
-                  >fidelity {{ v.scores.fidelity }}/5 · tests {{ v.scores.testAdequacy }}/5 ·
-                  {{ v.findings.length }} findings</span
-                >
-              </div>
-              <div class="small dim">{{ v.summary }}</div>
             </div>
-            <p v-if="!view.verdicts.length" class="hint">No verdicts yet.</p>
+            <div class="pane log-pane">
+              <PanelTitle title="Run log" />
+              <TranscriptList :items="runLog" compact empty="No run-level messages yet." />
+            </div>
           </div>
 
-          <div class="pane">
-            <PanelTitle
-              title="Artifacts"
-              :meta="view.artifacts.length ? `${view.artifacts.length} files` : undefined"
-            />
-            <ul v-if="view.artifacts.length" class="artifacts">
-              <li v-for="a in view.artifacts" :key="a.id">
-                <a :href="artifactUrl(a.id)" target="_blank" rel="noopener" class="mono">{{
-                  a.relPath
-                }}</a>
-                <span class="muted small">{{ a.kind }}</span>
-              </li>
-            </ul>
-            <p v-else class="hint">None yet.</p>
-          </div>
-        </aside>
-      </section>
+          <aside class="right">
+            <div class="pane">
+              <PanelTitle
+                title="Now"
+                :meta="
+                  current
+                    ? `attempt ${current.attempt}/${current.maxAttempts} · ${money(current.costUsd)}`
+                    : undefined
+                "
+              />
+              <template v-if="info && current">
+                <p style="font-size: 13px">{{ info.description }}</p>
+                <p class="small dim">
+                  <span class="muted">Can go wrong · </span>{{ info.whatCanGoWrong }}
+                </p>
+                <p class="small dim">
+                  <span class="muted">You can · </span>{{ info.whatYouCanDo }}
+                </p>
+                <div>
+                  <button
+                    class="btn"
+                    type="button"
+                    :disabled="!rerunnable"
+                    @click="act(`/stages/${current.id}/rerun`)"
+                  >
+                    <UiIcon name="refresh" />Re-run this stage
+                  </button>
+                </div>
+              </template>
+              <p v-else class="hint">Select a stage on the timeline to see what it does.</p>
+            </div>
+
+            <div class="pane">
+              <BudgetTape :cost="run.costUsd" :cap="run.options.budgetUsd" :breakdown="breakdown" />
+            </div>
+
+            <div class="pane">
+              <PanelTitle title="Tests" />
+              <table v-if="view.tests.length">
+                <tbody>
+                  <tr v-for="t in view.tests" :key="t.stageId + t.kind">
+                    <td class="lbl dim" style="font-size: 12px">{{ t.target }}</td>
+                    <td class="muted">{{ t.kind }}</td>
+                    <td><StatusLamp :status="t.status" /></td>
+                    <td class="num">{{ t.summary.passed }}/{{ t.summary.total }}</td>
+                  </tr>
+                </tbody>
+              </table>
+              <p v-else class="hint">No results yet.</p>
+            </div>
+
+            <div class="pane">
+              <PanelTitle title="Critic" />
+              <div v-for="v in view.verdicts" :key="v.stageId + v.round" class="stack verdict">
+                <div class="row small" style="gap: 8px">
+                  <span class="lbl dim" style="font-size: 12px">{{ v.target }}</span>
+                  <span class="muted">round {{ v.round }}</span>
+                  <StatusLamp :status="v.decision" />
+                  <span class="grow" />
+                  <span class="mono muted small"
+                    >fidelity {{ v.scores.fidelity }}/5 · tests {{ v.scores.testAdequacy }}/5 ·
+                    {{ v.findings.length }} findings</span
+                  >
+                </div>
+                <div class="small dim">{{ v.summary }}</div>
+              </div>
+              <p v-if="!view.verdicts.length" class="hint">No verdicts yet.</p>
+            </div>
+
+            <div class="pane">
+              <PanelTitle
+                title="Artifacts"
+                :meta="view.artifacts.length ? `${view.artifacts.length} files` : undefined"
+              />
+              <ul v-if="view.artifacts.length" class="artifacts">
+                <li v-for="a in view.artifacts" :key="a.id">
+                  <a :href="artifactUrl(a.id)" target="_blank" rel="noopener" class="mono">{{
+                    a.relPath
+                  }}</a>
+                  <span class="muted small">{{ a.kind }}</span>
+                </li>
+              </ul>
+              <p v-else class="hint">None yet.</p>
+            </div>
+          </aside>
+        </section>
+      </details>
     </template>
     <p v-else-if="!error" class="muted">Loading…</p>
   </div>

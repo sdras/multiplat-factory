@@ -1,8 +1,15 @@
 <script setup lang="ts">
 import type { Run, ToolchainReport } from '@mpf/core/schemas'
 
+definePageMeta({ key: (route) => route.fullPath })
+
 type Target = 'web' | 'ios' | 'android'
 
+const { isBoard } = useDashboardStyle()
+const route = useRoute()
+const previous = ref<Run>()
+const prefilling = ref(false)
+const prefillError = ref('')
 const api = useApi()
 const router = useRouter()
 const doctor = ref<ToolchainReport>()
@@ -21,6 +28,25 @@ const error = ref<string>()
 const busy = ref(false)
 
 onMounted(async () => {
+  if (typeof route.query.from === 'string') {
+    prefilling.value = true
+    try {
+      const snap = await api.get<{ run: Run }>(`/runs/${encodeURIComponent(route.query.from)}`)
+      previous.value = snap.run
+      form.locator = snap.run.source.locator
+      for (const t of ['web', 'ios', 'android'] as const)
+        form.targets[t] = snap.run.targets.includes(t)
+      form.budgetUsd = snap.run.options.budgetUsd
+      form.coreMode = snap.run.options.coreMode
+      form.webFramework = snap.run.options.webFramework ?? 'auto'
+      form.fake = snap.run.options.fake
+      form.beforeFixLoop = snap.run.options.checkpoints.beforeFixLoop
+    } catch (e) {
+      prefillError.value = `Couldn’t load the previous run: ${(e as Error).message}`
+    } finally {
+      prefilling.value = false
+    }
+  }
   try {
     health.value = await api.get('/health')
     doctor.value = await api.get('/doctor')
@@ -88,7 +114,9 @@ const STEPS = [
 ]
 
 const available = computed(() => new Set(doctor.value?.availableTargets ?? []))
-const chosen = computed(() => TARGETS.map((t) => t.id).filter((t) => form.targets[t]))
+const chosen = computed(() =>
+  TARGETS.map((t) => t.id).filter((t) => form.targets[t] && !disabled(t)),
+)
 const coreHint = computed(() => CORE_MODES.find((m) => m.id === form.coreMode)?.hint ?? '')
 const WEB_FRAMEWORKS: { id: typeof form.webFramework; label: string }[] = [
   { id: 'auto', label: 'Plan decides' },
@@ -113,14 +141,26 @@ const disabled = (t: Target) => !form.fake && !!doctor.value && !available.value
 
 async function submit() {
   error.value = undefined
-  if (!form.locator && !form.fake) return (error.value = 'Enter a source path or git URL.')
+  if (prefilling.value || prefillError.value || busy.value) return
+  if (!Number.isFinite(form.budgetUsd) || form.budgetUsd <= 0 || form.budgetUsd > 100)
+    return (error.value = 'Choose a budget greater than $0 and up to $100.')
+  if (!form.locator.trim() && !form.fake) return (error.value = 'Enter a source path or git URL.')
   if (!chosen.value.length) return (error.value = 'Pick at least one target.')
   busy.value = true
   try {
     const run = await api.post<Run>('/runs', {
-      source: { locator: form.locator || './fake-source' },
+      source: { locator: form.locator.trim() || './fake-source' },
       targets: chosen.value,
       options: {
+        ...(previous.value
+          ? {
+              models: previous.value.options.models,
+              effort: previous.value.options.effort,
+              e2e: previous.value.options.e2e,
+              iosMinVersion: previous.value.options.iosMinVersion,
+              androidMinSdk: previous.value.options.androidMinSdk,
+            }
+          : {}),
         coreMode: form.coreMode,
         ...(form.webFramework !== 'auto' && webChosen.value
           ? { webFramework: form.webFramework }
@@ -140,7 +180,174 @@ async function submit() {
 </script>
 
 <template>
-  <div>
+  <div v-if="isBoard">
+    <BoardHero
+      :title="previous ? 'New version' : 'New project'"
+      :description="
+        previous
+          ? `Create a new port of ${projectName(previous.source.locator)} using its updated source.`
+          : 'Choose an existing app and the platforms you want to port it to. You can review the plan before building starts.'
+      "
+      :art="previous ? 'update' : 'setup'"
+    />
+    <div class="board-columns">
+      <form class="board-card board-form" @submit.prevent="submit">
+        <p v-if="prefilling" role="status">Loading the previous version…</p>
+        <p v-if="prefillError" class="callout bad" role="alert">{{ prefillError }}</p>
+        <section class="stack">
+          <h2><span class="board-step">1</span> Select your app</h2>
+          <label for="board-source">Project folder or Git URL</label>
+          <input
+            id="board-source"
+            v-model="form.locator"
+            type="text"
+            placeholder="/path/to/your-project"
+            :disabled="form.fake || prefilling"
+            :required="!form.fake"
+          />
+          <p class="hint">
+            Paste the folder’s full path on this computer, or a Git repository URL. We’ll detect the
+            platform automatically.
+          </p>
+          <p v-if="previous" class="hint">
+            This creates a separate run from your current source. Previous outputs stay available.
+            Changes are analyzed again; incremental syncing isn’t available yet.
+          </p>
+        </section>
+        <fieldset class="board-fieldset stack">
+          <legend><span class="board-step">2</span> Where should it run?</legend>
+          <div class="board-targets">
+            <label
+              v-for="t in TARGETS"
+              :key="t.id"
+              class="board-target"
+              :class="{
+                selected: form.targets[t.id] && !disabled(t.id),
+                unavailable: disabled(t.id),
+              }"
+            >
+              <span class="board-toolbar"
+                ><strong>{{ boardPlatform[t.id] }}</strong
+                ><input v-model="form.targets[t.id]" type="checkbox" :disabled="disabled(t.id)"
+              /></span>
+              <span class="hint">{{ t.id === 'web' ? 'Open in a browser' : 'A native app' }}</span>
+              <StatusLamp
+                :status="readiness(t.id).status"
+                :label="form.fake ? 'Demo available' : readiness(t.id).text"
+              />
+            </label>
+          </div>
+          <NuxtLink v-if="doctor && available.size < 3" to="/doctor" class="inline small"
+            >Set up missing platform tools</NuxtLink
+          >
+        </fieldset>
+        <section class="stack">
+          <h2><span class="board-step">3</span> Set a spending limit</h2>
+          <label for="board-budget">Maximum spend for this run (USD)</label>
+          <input
+            id="board-budget"
+            v-model.number="form.budgetUsd"
+            type="number"
+            min="1"
+            max="100"
+            step="0.01"
+            required
+          />
+          <p class="hint">The factory stops work at this cap. You can spend up to $100 per run.</p>
+          <details class="board-details">
+            <summary>Daily limits &amp; token limits</summary>
+            <p class="hint">
+              The current engine enforces a dollar cap for each run. Shared daily limits and
+              token-based caps aren’t available yet.
+            </p>
+          </details>
+        </section>
+        <label class="board-check"
+          ><input v-model="form.planApproval" type="checkbox" /><span
+            >Let me review the plan before building</span
+          ></label
+        >
+        <details class="board-details">
+          <summary>Advanced settings</summary>
+          <div class="board-advanced">
+            <label
+              >Shared app logic<select v-model="form.coreMode">
+                <option v-for="m in CORE_MODES" :key="m.id" :value="m.id">{{ m.label }}</option>
+              </select></label
+            >
+            <p class="hint">{{ coreHint }}</p>
+            <label v-if="webChosen"
+              >Web framework<select v-model="form.webFramework">
+                <option v-for="f in WEB_FRAMEWORKS" :key="f.id" :value="f.id">{{ f.label }}</option>
+              </select></label
+            >
+            <label class="board-check"
+              ><input v-model="form.beforeFixLoop" type="checkbox" /><span
+                >Ask before each round of fixes</span
+              ></label
+            >
+            <label class="board-check"
+              ><input v-model="form.fake" type="checkbox" /><span
+                >Demo run · no AI spending or platform tools</span
+              ></label
+            >
+          </div>
+        </details>
+        <p v-if="health && !health.realPipeline" class="callout quiet">
+          This server supports demo runs only.
+        </p>
+        <p v-if="error" class="callout bad" role="alert">{{ error }}</p>
+        <div class="board-toolbar">
+          <span class="hint">{{
+            form.planApproval ? 'We’ll pause when the plan is ready.' : 'Work starts immediately.'
+          }}</span
+          ><button
+            class="btn primary"
+            type="submit"
+            :disabled="busy || prefilling || !!prefillError"
+          >
+            {{ busy ? 'Creating…' : previous ? 'Create next version' : 'Create project'
+            }}<UiIcon name="arrow-right" />
+          </button>
+        </div>
+      </form>
+      <aside class="board-card board-aside">
+        <h2>How the port works</h2>
+        <ol class="board-steps">
+          <li>
+            <strong>Analyze the original</strong>
+            <p>Factory reads your project and identifies its screens, features, and behavior.</p>
+          </li>
+          <li>
+            <strong>Build for each platform</strong>
+            <p>
+              Each version is built to preserve the original app’s features and use the platform’s
+              controls.
+            </p>
+          </li>
+          <li>
+            <strong>Run tests</strong>
+            <p>
+              Tests compare the new versions with the original. You can inspect the results and
+              screenshots.
+            </p>
+          </li>
+          <li>
+            <strong>Review and publish</strong>
+            <p>Review the build files and follow the publishing checklist for each platform.</p>
+          </li>
+        </ol>
+        <div class="board-note">
+          <p>
+            You can pause a run and review its progress. Publishing is a separate step that you
+            handle.
+          </p>
+        </div>
+        <NuxtLink to="/doctor" class="inline small">Check this computer’s readiness</NuxtLink>
+      </aside>
+    </div>
+  </div>
+  <div v-else>
     <div class="page-head">
       <div>
         <h1 class="title">New run</h1>

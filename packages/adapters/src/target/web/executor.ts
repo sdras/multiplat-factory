@@ -2,6 +2,7 @@ import { mkdirSync } from 'node:fs'
 import { join } from 'pathe'
 import type { Browser, Locator, Page } from 'playwright'
 import type { AppSpec, Behavior, Element, Screen } from '@mpf/core'
+import { concreteRoute, routeParameter } from '@mpf/core'
 
 export type Log = (message: string) => void
 
@@ -40,7 +41,14 @@ export function rawRouteUrl(baseUrl: string, spec: AppSpec, route: string): stri
 
 export function routeUrl(baseUrl: string, screen: Screen | undefined): string {
   const base = baseUrl.endsWith('/') ? baseUrl : `${baseUrl}/`
-  const route = screen?.route ?? '/'
+  // A screen whose path varies (`/article/[slug]`) has no URL of its own: opening the pattern
+  // literally lands on "Not found", so the behavior has to reach it through the UI instead.
+  const param = routeParameter(screen?.route)
+  if (param)
+    throw new Error(
+      `screen "${screen?.id}" has a parameterized route "${screen?.route}" (${param}); a behavior reaches it through the UI, not by navigating to it`,
+    )
+  const route = concreteRoute(screen?.route ?? '/')
   if (route.startsWith('#')) return `${base}${route}`
   if (route.startsWith('/')) return `${base}${route.slice(1)}`
   return `${base}${route}`
@@ -255,8 +263,16 @@ export async function executeBehavior(
       navigated = true
     }
     const first = behavior.steps[0]?.op
-    if (first !== 'navigate' && first !== 'openRoute' && first !== 'seed')
-      await goto(behavior.screen)
+    if (first !== 'navigate' && first !== 'openRoute' && first !== 'seed') {
+      try {
+        await goto(behavior.screen)
+      } catch (err) {
+        return {
+          ok: false,
+          error: `opening screen "${behavior.screen}": ${(err as Error).message}`,
+        }
+      }
+    }
     for (const [i, step] of behavior.steps.entries()) {
       const at = `step ${i + 1} (${step.op})`
       try {
@@ -375,18 +391,26 @@ export async function executeBehavior(
             const ok = await poll(async () => {
               // Rows that render a moment after the previous step are not on the page at resolve time.
               loc ??= await resolveAll(page, spec, step.element)
-              const matches = loc ? await loc.count() : 0
+              // A user counts what is on screen: rows a filter hides with `hidden` or CSS stay in
+              // the DOM (Svelte's TodoMVC keeps every todo mounted) but are not there to count.
+              const matches = loc ? await loc.filter({ visible: true }).count() : 0
               seen = matches
               if (matches === step.count) return true
               if (matches !== 1) return false
               const children = await loc!
+                .first()
                 .evaluate((el) => {
+                  // Structural types only: this package compiles without the DOM lib.
+                  const shown = (nodes: ArrayLike<unknown>) =>
+                    Array.from(nodes as ArrayLike<{ offsetParent: unknown }>).filter(
+                      (n) => n.offsetParent !== null,
+                    ).length
                   const rows = el.querySelectorAll(
                     ':scope > tbody > tr, :scope > tr, :scope > li, :scope > *',
                   )
                   const trs = el.querySelectorAll(':scope > tbody > tr, :scope > tr')
                   const lis = el.querySelectorAll(':scope > li')
-                  return trs.length || lis.length || rows.length
+                  return shown(trs) || shown(lis) || shown(rows)
                 })
                 .catch(() => 0)
               seen = children

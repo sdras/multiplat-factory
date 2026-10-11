@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import type { Run, Stage } from '@mpf/core/schemas'
 
+const { isBoard } = useDashboardStyle()
 const api = useApi()
 const runs = ref<Run[]>([])
 const stagesOf = ref<Record<string, Stage[]>>({})
@@ -87,7 +88,14 @@ function sectors(run: Run) {
 </script>
 
 <template>
-  <div>
+  <BoardProjects
+    v-if="isBoard"
+    :runs="runs"
+    :stages-of="stagesOf"
+    :loaded="loaded"
+    :error="error"
+  />
+  <div v-else>
     <div class="page-head">
       <div>
         <h1 class="title">Runs</h1>

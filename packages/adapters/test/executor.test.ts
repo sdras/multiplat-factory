@@ -56,6 +56,7 @@ const todoHtml = `<!doctype html>
           <li class="completed"><div class="view"><input class="toggle" type="checkbox" checked><label>First todo</label><button class="destroy"></button></div></li>
           <li><div class="view"><input class="toggle" type="checkbox"><label>Second todo</label><button class="destroy"></button></div></li>
           <li><div class="view"><input class="toggle" type="checkbox"><label>Third todo</label><button class="destroy"></button></div></li>
+          <li hidden><div class="view"><input class="toggle" type="checkbox"><label>Filtered-out todo</label><button class="destroy"></button></div></li>
         </ul>
       </main>
       <footer class="footer">
@@ -345,6 +346,60 @@ describe.skipIf(!browser)('web executor', () => {
     expect(await resolveElement(page, shared, 'new-todo')).toBeDefined()
     expect(await resolveElement(page, shared, 'edit-field')).toBeUndefined()
     await page.close()
+  }, 30_000)
+
+  it('counts only visible rows: a filter that hides a row with `hidden` keeps it in the DOM', async () => {
+    // The page carries a fourth, hidden row; both ways of counting see three.
+    const r = await executeBehavior(
+      browser!,
+      baseUrl,
+      todoSpec,
+      {
+        ...behavior([
+          { op: 'expectCount', element: 'todo-label', count: 3 },
+          { op: 'expectCount', element: 'todo-list', count: 3 },
+        ]),
+        screen: 'todos',
+      },
+      undefined,
+      () => {},
+    )
+    expect(r.ok, r.error).toBe(true)
+  }, 30_000)
+
+  it('opens a screen by its concrete path, dropping a query pattern, and refuses a parameterized one', async () => {
+    const routed: AppSpec = {
+      ...todoSpec,
+      screens: [
+        { ...todoSpec.screens[0]!, route: '/todo?tab=all|active&tag=<tag>&page=<n>' },
+        {
+          ...todoSpec.screens[0]!,
+          id: 'detail',
+          name: 'Detail',
+          route: '/todo/[id]',
+          elements: [],
+        },
+      ],
+    }
+    const ok = await executeBehavior(
+      browser!,
+      baseUrl,
+      routed,
+      { ...behavior([{ op: 'expectCount', element: 'todo-label', count: 3 }]), screen: 'todos' },
+      undefined,
+      () => {},
+    )
+    expect(ok.ok, ok.error).toBe(true)
+    const direct = await executeBehavior(
+      browser!,
+      baseUrl,
+      routed,
+      { ...behavior([{ op: 'expectCount', element: 'todo-label', count: 3 }]), screen: 'detail' },
+      undefined,
+      () => {},
+    )
+    expect(direct.ok).toBe(false)
+    expect(direct.error).toMatch(/parameterized route "\/todo\/\[id\]"/)
   }, 30_000)
 
   it('counts every element a repeated selector matches, not only the first', async () => {

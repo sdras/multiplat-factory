@@ -1,7 +1,9 @@
-import { existsSync } from 'node:fs'
+import { existsSync, mkdtempSync, writeFileSync } from 'node:fs'
 import { join } from 'pathe'
 import type { MpfConfig } from '@mpf/core'
+import { tmpdir } from 'node:os'
 import { runProcess, tryOutput } from '../exec.ts'
+import type { MaestroTools } from './maestro.ts'
 
 export interface XcodeTools {
   developerDir: string
@@ -197,9 +199,16 @@ export async function launchApp(
   tools: XcodeTools,
   udid: string,
   bundleId: string,
-  opts: { url?: string; env?: Record<string, string>; waitMs?: number } = {},
+  opts: {
+    url?: string
+    env?: Record<string, string>
+    waitMs?: number
+    maestro?: MaestroTools
+  } = {},
 ): Promise<IosLaunchCheck> {
-  const dismissedDialog = await dismissSystemDialogs(tools, udid, bundleId).catch(() => undefined)
+  const dismissedDialog = await dismissSystemDialogs(tools, udid, bundleId, opts.maestro).catch(
+    () => undefined,
+  )
   const result = (check: IosLaunchCheck): IosLaunchCheck =>
     dismissedDialog ? { ...check, dismissedDialog } : check
   await runProcess({
@@ -244,27 +253,46 @@ export async function launchApp(
 }
 
 /**
- * The Android counterpart clears ANR dialogs and choosers; on the simulator the equivalent is the
- * system "Open in <app>?" alert that `simctl openurl` and Maestro's `openLink` raise for a custom
- * scheme, and which hides the whole app from Maestro's hierarchy while it is up. That alert is
- * SpringBoard's: `simctl` can neither list SpringBoard's alerts nor inject a tap or key event
- * (`io` only captures screenshots and video, `ui` only sets appearance options, and `launchctl list`
- * shows nothing because SpringBoard is always running), so without a UI driver there is no reliable
- * way to see or dismiss it. This is deliberately a no-op that always resolves to undefined; it keeps
- * the launch path symmetric with Android and gives a future driver-backed implementation a home.
- * The scaffolds avoid the alert by navigating through the `mpf_route` launch argument instead of
- * `openurl`; when one is stuck, shut the simulator down (`SimulatorHandle.stop`) and boot again.
+ * Dismiss a system dialog that covers the app on the simulator: SpringBoard's "Open in …?"
+ * confirmation, which a custom URL scheme opened from outside the app leaves behind, hides the whole
+ * app from Maestro's hierarchy and fails every flow. `simctl` can neither see nor tap such alerts,
+ * but Maestro can, so this runs a tiny flow that taps Cancel when the dialog is up. Without Maestro
+ * it is a no-op. The scaffolds avoid the alert in the first place by navigating through the
+ * `mpf_route` launch argument instead of `openurl`.
  */
 export async function dismissSystemDialogs(
   tools: XcodeTools,
   udid: string,
   appId: string,
+  maestro?: MaestroTools,
 ): Promise<string | undefined> {
   void tools
-  void udid
   void appId
-  return undefined
+  if (!maestro) return undefined
+  const flow = join(mkdtempSync(join(tmpdir(), 'mpf-ios-dismiss-')), 'dismiss.yaml')
+  writeFileSync(flow, OPEN_IN_DISMISS_FLOW)
+  const r = await runProcess({
+    command: maestro.bin,
+    args: ['--device', udid, 'test', flow],
+    env: maestro.env,
+    timeoutMs: 90_000,
+  })
+  return /Tap on "Cancel"\.\.\. COMPLETED/.test(`${r.stdout}\n${r.stderr}`)
+    ? 'an "Open in …?" confirmation (a custom URL scheme opened from outside the app)'
+    : undefined
 }
+
+/** A flow against SpringBoard: no launch, one conditional tap. */
+const OPEN_IN_DISMISS_FLOW = `appId: com.apple.springboard
+---
+- runFlow:
+    when:
+      visible:
+        text: "Open in .*"
+    commands:
+      - tapOn:
+          text: "Cancel"
+`
 
 export async function appRunning(
   tools: XcodeTools,

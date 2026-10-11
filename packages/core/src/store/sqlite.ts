@@ -59,7 +59,15 @@ export class SqliteRunStore implements RunStore {
   constructor(path: string) {
     if (path !== ':memory:') ensureDir(dirname(path))
     this.db = new DatabaseSync(path)
-    this.db.exec('PRAGMA journal_mode = WAL;')
+    // The daemon and a CLI driver open the same store: wait for a lock instead of failing at once
+    // (Node's SQLite has no busy timeout by default), and never let the WAL switch, which needs
+    // the file to itself for a moment, take the whole process down when another connection is in.
+    this.db.exec('PRAGMA busy_timeout = 5000;')
+    try {
+      this.db.exec('PRAGMA journal_mode = WAL;')
+    } catch (err) {
+      if (!/locked|busy/i.test((err as Error).message)) throw err
+    }
     this.db.exec('PRAGMA foreign_keys = ON;')
     this.db.exec(SCHEMA)
   }

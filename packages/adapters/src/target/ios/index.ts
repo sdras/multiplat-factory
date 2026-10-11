@@ -354,11 +354,15 @@ ${ctx.core ? `\n## Shared core\n${iosCoreConventions(ctx.core)}\n` : ''}`
     const shotsDir = join(ctx.workspace, 'screenshots')
     mkdirSync(shotsDir, { recursive: true })
     const sim = await ensureSimulator(tools, 'mpf-iphone', ctx.log, ctx.signal)
+    // Maestro also clears a stale system dialog before each launch (see dismissSystemDialogs).
+    const maestroForLaunch = await maestroTools(ctx.config, tools.env)
+    const dismiss = maestroForLaunch ? { maestro: maestroForLaunch } : {}
     const screenshots: E2eResult['screenshots'] = []
     try {
       ctx.log(`installing ${project.name}.app on ${sim.udid}`)
       await installIosApp(tools, sim.udid, app)
-      const launch = await launchIosApp(tools, sim.udid, project.bundleId)
+      const launch = await launchIosApp(tools, sim.udid, project.bundleId, dismiss)
+      if (launch.dismissedDialog) ctx.log(`before launching: dismissed ${launch.dismissedDialog}`)
       const launchOutcome: TestOutcome = {
         kind: 'launch',
         status: launch.ok ? 'pass' : 'fail',
@@ -385,6 +389,7 @@ ${ctx.core ? `\n## Shared core\n${iosCoreConventions(ctx.core)}\n` : ''}`
           const check = await launchIosApp(tools, sim.udid, project.bundleId, {
             env: { [IOS_ROUTE_KEY]: s.id },
             waitMs: 1500,
+            ...dismiss,
           })
           const file = join(shotsDir, `${s.id}.png`)
           if (check.ok && (await simScreenshot(tools, sim.udid, file)))

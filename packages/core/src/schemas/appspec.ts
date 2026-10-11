@@ -138,3 +138,22 @@ export type AppSpec = z.infer<typeof AppSpec>
 export type Screen = z.infer<typeof Screen>
 export type Element = z.infer<typeof Element>
 export type LogicUnit = z.infer<typeof LogicUnit>
+
+/**
+ * The placeholder in a route's path, if any: `[slug]`, `<id>`, `{id}`, or `:id` in a segment. Such a
+ * screen cannot be opened by URL; a behavior reaches it through the UI. Query strings are not
+ * looked at (a filter pattern like `?tab=all|feed` is dropped when the URL is built).
+ */
+export function routeParameter(route: string | undefined): string | undefined {
+  if (!route) return undefined
+  const path = route.split('?')[0] ?? ''
+  const m = /\[[^\]]+\]|<[^>]+>|\{[^}]+\}|(?:^|\/):[A-Za-z_][\w-]*/.exec(path)
+  return m ? m[0].replace(/^\//, '') : undefined
+}
+
+/** The route without a query string that carries placeholders or `|` alternatives. */
+export function concreteRoute(route: string): string {
+  const [path, query] = route.split('?', 2) as [string, string | undefined]
+  if (query === undefined) return route
+  return /[<>{}[\]|]/.test(query) ? path : route
+}

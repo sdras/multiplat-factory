@@ -1,8 +1,10 @@
 import type { AppSpec, BehaviorSpec, PortPlan, Run } from '@mpf/core'
+import { routeParameter } from '@mpf/core'
 
 /** Every behavior must reference screens and elements that exist in the spec. */
 export function validateBehaviorRefs(spec: AppSpec, behaviors: BehaviorSpec): string[] {
   const screens = new Set(spec.screens.map((s) => s.id))
+  const routeOf = new Map(spec.screens.map((s) => [s.id, s.route]))
   const elements = new Set(spec.screens.flatMap((s) => s.elements.map((e) => e.id)))
   const screenOf = new Map(
     spec.screens.flatMap((s) => s.elements.map((e) => [e.id, s.id] as const)),
@@ -27,7 +29,17 @@ export function validateBehaviorRefs(spec: AppSpec, behaviors: BehaviorSpec): st
           `${b.id}: starts on screen "${b.screen}" but its first step uses "${first.element}" from screen "${at}"; set screen to "${at}" or begin with a navigate step`,
         )
     }
+    // A screen whose route has a parameter has no URL of its own: a flow cannot open it directly.
+    const param = routeParameter(routeOf.get(b.screen))
+    if (param && !['navigate', 'openRoute'].includes(first?.op ?? ''))
+      errors.push(
+        `${b.id}: starts on screen "${b.screen}" whose route "${routeOf.get(b.screen)}" has a parameter (${param}); start on a screen with a concrete route and reach "${b.screen}" by tapping the item that leads there`,
+      )
     for (const [i, step] of b.steps.entries()) {
+      if (step.op === 'navigate' && routeParameter(routeOf.get(step.screen)))
+        errors.push(
+          `${b.id} step ${i + 1}: navigate to "${step.screen}" whose route has a parameter; reach it through the UI instead`,
+        )
       if (step.op === 'navigate' && !screens.has(step.screen)) {
         errors.push(`${b.id} step ${i + 1}: unknown screen "${step.screen}"`)
       }

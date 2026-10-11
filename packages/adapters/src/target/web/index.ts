@@ -47,7 +47,7 @@ export function webProjectFor(ctx: TargetContext): WebProject {
     name: webPackageNameFor(ctx.spec.name),
     appName: ctx.spec.name,
     framework: supportedFramework(requested),
-    screens: ctx.spec.screens.map((s) => ({ id: s.id, name: s.name })),
+    screens: ctx.spec.screens.map((s) => ({ id: s.id, name: s.name, route: s.route })),
     rootScreen: ctx.spec.navigation.root,
     core: !!ctx.core,
   }
