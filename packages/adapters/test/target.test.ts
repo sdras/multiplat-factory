@@ -942,7 +942,14 @@ describe('qualified taps and restarts on a target app', () => {
     const { yaml, unverifiable } = compileMaestroFlow(notes, b, opts)
     expect(unverifiable).toBeUndefined()
     expect(yaml).toContain(
-      '- scrollUntilVisible:\n    element:\n      id: "note_row"\n      containsDescendants:\n        - text: ".*First.*"\n    direction: DOWN\n    timeout: 4000\n    optional: true\n- runFlow:\n    when:\n      visible:\n        id: "note_row"\n        text: ".*First.*"\n    commands:\n      - tapOn:\n          id: "note_row"\n          text: ".*First.*"\n- runFlow:\n    when:\n      notVisible:\n        id: "note_row"\n        text: ".*First.*"\n    commands:\n      - tapOn:\n          id: "note_row"\n          containsDescendants:\n            - text: ".*First.*"\n',
+      '- scrollUntilVisible:\n    element:\n      text: ".*First.*"\n    direction: DOWN\n    timeout: 4000\n    optional: true\n- runFlow:\n    when:\n      visible:\n        id: "note_row"\n        text: ".*First.*"\n    commands:\n      - tapOn:\n          id: "note_row"\n          text: ".*First.*"\n- runFlow:\n    when:\n      notVisible:\n        id: "note_row"\n        text: ".*First.*"\n    commands:\n      - runFlow:\n          when:\n            visible:\n              id: "note_row"\n              containsDescendants:\n                - text: ".*First.*"\n          commands:\n            - tapOn:\n                id: "note_row"\n                containsDescendants:\n                  - text: ".*First.*"\n',
+    )
+    // A leaf control beside the row's text (a Compose checkbox): nearest match left, then right.
+    expect(yaml).toContain(
+      '                  - tapOn:\n                      id: "note_row"\n                      leftOf:\n                        text: ".*First.*"\n',
+    )
+    expect(yaml).toContain(
+      '                  - tapOn:\n                      id: "note_row"\n                      rightOf:\n                        text: ".*First.*"\n',
     )
     const dotted: Behavior = {
       ...base,
@@ -971,7 +978,7 @@ describe('qualified taps and restarts on a target app', () => {
     })
     expect(hooked.unverifiable).toBeUndefined()
     expect(hooked.yaml).toContain(
-      '      - tapOn:\n          id: "note_row"\n          containsDescendants:\n            - text: ".*First.*"\n',
+      '            - tapOn:\n                id: "note_row"\n                containsDescendants:\n                  - text: ".*First.*"\n',
     )
     const unhooked = compileMaestroFlow(notes, b, { ...src, sourceHooks: ['title-input'] })
     expect(unhooked.unverifiable).toBeUndefined()

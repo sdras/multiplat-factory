@@ -1,5 +1,7 @@
+import { existsSync, statSync } from 'node:fs'
+import { join, relative } from 'pathe'
 import type { AnalysisHints } from '@mpf/core'
-import { serveStaticDir, startDevServer, type DevServerHandle } from '@mpf/harness'
+import { runProcess, serveStaticDir, startDevServer, type DevServerHandle } from '@mpf/harness'
 import {
   hasFile,
   type DetectContext,
@@ -8,7 +10,7 @@ import {
   type SourceTestCommand,
   type TestOutcome,
 } from '../types.ts'
-import { ensureInstalled, localBin } from './pm.ts'
+import { ensureInstalled, localBin, type PackageManager } from './pm.ts'
 
 const URL_PATTERN = /https?:\/\/(?:localhost|127\.0\.0\.1|0\.0\.0\.0):\d+\/?/
 
@@ -322,7 +324,18 @@ export const webGeneric: SourceAdapter = {
   },
   async observe(ctx, _d, opts) {
     const pm = await ensureInstalled(ctx.dir, opts.log, opts.signal)
-    const script = ctx.packageJson?.scripts?.dev ? 'dev' : 'start'
+    const scripts = ctx.packageJson?.scripts ?? {}
+    // An unknown toolchain is observed most faithfully from its production build served statically:
+    // no dev-server port to guess (webpack-dev-server ignores PORT), no `--open` browser window, no
+    // HMR client in the page. The dev script is the fallback when there is no build or it fails.
+    if (scripts.build) {
+      const built = await buildToStaticDir(ctx.dir, pm, opts)
+      if (built) {
+        opts.log(`serving the production build from ${relative(ctx.dir, built) || '.'}`)
+        return serveStaticDir(built, opts.port)
+      }
+    }
+    const script = scripts.dev ? 'dev' : 'start'
     const cmd = pm.run(script)
     opts.log(`starting: ${cmd.command} ${cmd.args.join(' ')} (PORT=${opts.port})`)
     return startDevServer({
@@ -337,6 +350,52 @@ export const webGeneric: SourceAdapter = {
     })
   },
   existingTests: async (ctx) => testCommand(ctx),
+}
+
+/** Folders that only ever hold a production build, most common first. */
+const OUTPUT_DIRS = ['dist', 'build', 'out', 'www', '_site', '.output/public']
+/** Folders that are usually sources (CRA's `public/index.html` is a template); only a fresh build output counts. */
+const SOURCE_LIKE_DIRS = ['docs', 'public']
+
+/**
+ * Run the package's `build` script and return the output folder: the known folder whose
+ * `index.html` this build wrote (an older template such as CRA's `public/index.html` does not
+ * count). Undefined when the build fails or writes nowhere known, so the caller can fall back.
+ */
+async function buildToStaticDir(
+  dir: string,
+  pm: PackageManager,
+  opts: ObserveOptions,
+): Promise<string | undefined> {
+  const cmd = pm.run('build')
+  opts.log(`building: ${cmd.command} ${cmd.args.join(' ')}`)
+  const started = Date.now()
+  const r = await runProcess({
+    ...cmd,
+    cwd: dir,
+    timeoutMs: 15 * 60_000,
+    signal: opts.signal,
+    env: { ...process.env, ...opts.env, CI: '1' },
+  })
+  if (r.exitCode !== 0) {
+    opts.log(
+      `build failed (exit ${r.exitCode}); falling back to the dev server\n${r.stderr.slice(-800)}`,
+    )
+    return undefined
+  }
+  const indexIn = (d: string) => join(dir, d, 'index.html')
+  const isFresh = (d: string) =>
+    existsSync(indexIn(d)) && statSync(indexIn(d)).mtimeMs >= started - 1000
+  // A fresh index.html anywhere known wins; a build that changed nothing leaves the previous output
+  // untouched (webpack compares before emitting), so an output-only folder counts even when stale.
+  const chosen =
+    [...OUTPUT_DIRS, ...SOURCE_LIKE_DIRS].find(isFresh) ??
+    OUTPUT_DIRS.find((d) => existsSync(indexIn(d)))
+  if (!chosen) {
+    opts.log('build wrote no index.html into a known output folder; falling back to the dev server')
+    return undefined
+  }
+  return join(dir, chosen)
 }
 
 /** A build-less site: index.html plus scripts and styles, no package.json scripts. */

@@ -128,20 +128,24 @@ function absolutePaths(cmd: string): string[] {
  * and anything this cannot read stays one opaque command that must match the allowlist as is.
  */
 export function commandsOf(line: string): string[] {
-  const trimmed = line.trim()
-  const loop = /^for\s+\w+\s+in\s[^;\n]*[;\n]\s*do\s/.exec(trimmed)
-  if (loop) {
-    const after = trimmed.slice(loop[0].length)
-    const end = after.lastIndexOf('done')
-    if (end >= 0 && /^[;\s]*$/.test(after.slice(end + 4))) {
-      return commandsOf(after.slice(0, end).replace(/[;\s]+$/, ''))
-    }
-  }
-  // Newlines separate commands the same way `;` does.
-  return trimmed
-    .split(/\s*(?:;|&&|\|\||\n)\s*/)
-    .map((c) => c.trim())
-    .filter(Boolean)
+  const out: string[] = []
+  // Every `for … in …; do … done` block, wherever it sits in the line, contributes its body's
+  // commands; the text around the blocks is an ordinary sequence.
+  const rest = line.replace(
+    /for\s+\w+\s+in\s[^;\n]*[;\n]\s*do\s([\s\S]*?)\bdone\b/g,
+    (_m, body: string) => {
+      out.push(...commandsOf(body.replace(/[;\s]+$/, '')))
+      return ' '
+    },
+  )
+  out.push(
+    ...rest
+      .trim()
+      .split(/\s*(?:;|&&|\|\||\n)\s*/)
+      .map((c) => c.trim())
+      .filter(Boolean),
+  )
+  return out
 }
 
 /** `S=/path; ls $S` or `FOO=1 cargo test` without the leading `NAME=value` tokens (quoted values included). */

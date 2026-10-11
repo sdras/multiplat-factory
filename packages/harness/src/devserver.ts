@@ -20,18 +20,22 @@ export async function findFreePort(): Promise<number> {
   })
 }
 
-/** Poll until the URL answers with any HTTP status below 500. */
+/**
+ * Poll until the URL answers with any HTTP status below 500. A getter re-reads the URL on every
+ * probe, so a tool that announces a different port than it was given is probed where it listens.
+ */
 export async function waitForHttp(
-  url: string,
+  url: string | (() => string),
   timeoutMs = 90_000,
   signal?: AbortSignal,
 ): Promise<void> {
+  const current = () => (typeof url === 'function' ? url() : url)
   const deadline = Date.now() + timeoutMs
   let lastErr: unknown
   while (Date.now() < deadline) {
     if (signal?.aborted) throw new Error('aborted')
     try {
-      const res = await fetch(url, { signal: AbortSignal.timeout(3000), redirect: 'manual' })
+      const res = await fetch(current(), { signal: AbortSignal.timeout(3000), redirect: 'manual' })
       if (res.status < 500) return
     } catch (err) {
       lastErr = err
@@ -39,7 +43,7 @@ export async function waitForHttp(
     await new Promise((r) => setTimeout(r, 500))
   }
   throw new Error(
-    `server at ${url} did not become ready within ${timeoutMs} ms${lastErr ? `: ${(lastErr as Error).message}` : ''}`,
+    `server at ${current()} did not become ready within ${timeoutMs} ms${lastErr ? `: ${(lastErr as Error).message}` : ''}`,
   )
 }
 
@@ -83,10 +87,14 @@ export async function startDevServer(opts: StartDevServerOptions): Promise<DevSe
     if (opts.urlPattern) {
       const m = opts.urlPattern.exec(s)
       if (m?.[0]) {
-        url = m[0]
+        const announced = m[0]
           .replace('localhost', '127.0.0.1')
           .replace('0.0.0.0', '127.0.0.1')
           .replace(/\/?$/, '/')
+        // webpack-dev-server and friends ignore PORT and pick their own; follow what they announce.
+        if (announced !== url)
+          opts.onOutput?.(`[mpf] dev server announced ${announced}; probing it`)
+        url = announced
       }
     }
   }
@@ -100,7 +108,7 @@ export async function startDevServer(opts: StartDevServerOptions): Promise<DevSe
     throw new Error(`dev server exited early (code ${r.exitCode}):\n${output.slice(-2000)}`)
   })
   try {
-    await Promise.race([waitForHttp(url, opts.timeoutMs ?? 90_000, opts.signal), exited])
+    await Promise.race([waitForHttp(() => url, opts.timeoutMs ?? 90_000, opts.signal), exited])
   } catch (err) {
     await stop()
     throw err

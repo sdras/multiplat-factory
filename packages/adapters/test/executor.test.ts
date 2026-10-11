@@ -319,6 +319,34 @@ describe.skipIf(!browser)('web executor', () => {
     expect(r.ok, r.error).toBe(true)
   }, 30_000)
 
+  it('does not fall back from a scoped selector to a test id another element shares', async () => {
+    // Two spec elements share the source hook `new-todo-input`; the second is scoped to an editor
+    // that is not open, so it must resolve to nothing rather than to the header field.
+    const shared: AppSpec = {
+      ...todoSpec,
+      screens: [
+        {
+          ...todoSpec.screens[0]!,
+          elements: [
+            ...todoSpec.screens[0]!.elements,
+            {
+              id: 'edit-field',
+              kind: 'input',
+              label: 'Edit field',
+              testId: 'new-todo-input',
+              sourceSelector: 'li.editing input.edit',
+            },
+          ],
+        },
+      ],
+    }
+    const page = await browser!.newPage()
+    await page.goto(`${baseUrl}todo`)
+    expect(await resolveElement(page, shared, 'new-todo')).toBeDefined()
+    expect(await resolveElement(page, shared, 'edit-field')).toBeUndefined()
+    await page.close()
+  }, 30_000)
+
   it('counts every element a repeated selector matches, not only the first', async () => {
     const r = await executeBehavior(
       browser!,

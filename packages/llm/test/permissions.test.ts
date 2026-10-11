@@ -55,6 +55,19 @@ describe('worker permission policy', () => {
     expect(decide(policy, 'Bash', { command: 'ls a\nrm -rf b' }).allow).toBe(false)
     expect(decide(policy, 'Bash', { command: 'for f in a b\ndo\n  ls $f\ndone' }).allow).toBe(true)
     expect(commandsOf('ls | head -3')).toEqual(['ls | head -3'])
+    // A command substitution in the list and `do` on its own line (a fix worker wrote exactly this).
+    expect(commandsOf('for f in $(ls | sort)\ndo\n  echo "== $f"; wc -l $f\ndone')).toEqual([
+      'echo "== $f"',
+      'wc -l $f',
+    ])
+    // A loop after another statement is still a loop, not a command named `for`.
+    expect(commandsOf('ls; for f in $(ls | sort); do cat $f; done').sort()).toEqual([
+      'cat $f',
+      'ls',
+    ])
+    expect(decide(policy, 'Bash', { command: 'ls; for f in a b; do rm -rf $f; done' }).allow).toBe(
+      false,
+    )
   })
 
   it('judges the command after a cd into the workspace, and refuses cd elsewhere', () => {

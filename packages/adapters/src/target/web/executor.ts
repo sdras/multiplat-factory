@@ -83,12 +83,17 @@ export async function resolveAll(
   elementId: string,
   text?: string,
 ): Promise<Locator | undefined> {
-  const el = spec.screens.flatMap((s) => s.elements).find((e) => e.id === elementId)
+  const all = spec.screens.flatMap((s) => s.elements)
+  const el = all.find((e) => e.id === elementId)
   if (!el) return undefined
   const candidates: Locator[] = []
   const selector = el.sourceSelector?.trim()
   if (selector) candidates.push(page.locator(selector))
-  if (el.testId) {
+  // A hook the source reuses for several controls (TodoMVC React's `text-input` on both the new-todo
+  // field and the inline editor) cannot identify one of them: when the spec scoped the element with
+  // a selector, that selector is the only way to it, and a miss means the element is not there.
+  const sharedHook = all.some((e) => e !== el && e.testId === el.testId)
+  if (el.testId && !(selector && sharedHook)) {
     candidates.push(page.locator(`[data-testid="${css(el.testId)}"]`))
     candidates.push(page.locator(`[data-test="${css(el.testId)}"]`))
     candidates.push(page.locator(`#${css(el.testId)}`))
