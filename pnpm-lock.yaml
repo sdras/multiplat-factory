@@ -449,6 +449,9 @@ importers:
       vue-tsc:
         specifier: 'catalog:'
         version: 3.3.11(typescript@5.9.3)
+      webmcp-types:
+        specifier: ^0.1.10
+        version: 0.1.10
 
   apps/server:
     dependencies:
@@ -8220,6 +8223,12 @@ packages:
         integrity: sha512-2JAn3z8AR6rjK8Sm8orRC0h/bcl/DqL7tRPdGZ4I1CjdF+EaMLmYxBHyXuKL849eucPFhvBoxMsflfOb8kxaeQ==,
       }
 
+  webmcp-types@0.1.10:
+    resolution:
+      {
+        integrity: sha512-U4GQ1RpJ0tqCUt2ALMV9Pnhi+hsy8L31f/Q1v4mLVhW64r5sYhh+2+SjP/Lq4/9jP33vZgNkuRZARJl65A/ZIg==,
+      }
+
   webpack-virtual-modules@0.6.2:
     resolution:
       {
@@ -13355,6 +13364,8 @@ snapshots:
   web-worker@1.5.0: {}
 
   webidl-conversions@3.0.1: {}
+
+  webmcp-types@0.1.10: {}
 
   webpack-virtual-modules@0.6.2: {}
 

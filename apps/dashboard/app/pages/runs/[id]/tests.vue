@@ -1,6 +1,8 @@
 <script setup lang="ts">
 import type { Artifact } from '@mpf/core/schemas'
 
+const annotating = ref<Artifact>()
+const review = useProjectReview()
 const { isBoard } = useDashboardStyle()
 const route = useRoute()
 const id = String(route.params.id)
@@ -247,6 +249,9 @@ const parity = computed(() => {
       </template>
 
       <h2>Screens: source vs targets</h2>
+      <button class="btn review-page-action" @click="review.showDesign()">
+        Explore 3 design directions
+      </button>
       <p v-if="!screens.length" class="muted">
         Screenshots appear after the observe stage (source) and each target's test stage.
       </p>
@@ -256,7 +261,12 @@ const parity = computed(() => {
         >
         <div class="row" style="align-items: flex-start; margin-top: 8px">
           <figure style="margin: 0; max-width: 360px">
-            <figcaption class="muted">source</figcaption>
+            <figcaption class="muted">
+              Source
+              <button v-if="shot(s)" class="btn annotate-button" @click="annotating = shot(s)">
+                Annotate
+              </button>
+            </figcaption>
             <img
               v-if="shot(s)"
               :src="contentUrl(shot(s)!)"
@@ -266,7 +276,16 @@ const parity = computed(() => {
             <p v-else class="muted">—</p>
           </figure>
           <figure v-for="t in targets" :key="t" style="margin: 0; max-width: 220px">
-            <figcaption class="muted">{{ t }}</figcaption>
+            <figcaption class="muted">
+              {{ t }}
+              <button
+                v-if="shot(s, t)"
+                class="btn annotate-button"
+                @click="annotating = shot(s, t)"
+              >
+                Annotate
+              </button>
+            </figcaption>
             <img
               v-if="shot(s, t)"
               :src="contentUrl(shot(s, t)!)"
@@ -278,6 +297,12 @@ const parity = computed(() => {
         </div>
       </div>
     </template>
+    <PreviewAnnotator
+      v-if="annotating"
+      :run-id="id"
+      :artifact="annotating"
+      @close="annotating = undefined"
+    />
   </div>
 </template>
 

@@ -147,7 +147,7 @@ function stagesFor(
 
 function latestTests(ctx: StageContext, target: TestResultTarget): TestResult[] {
   const byKind = new Map<string, TestResult>()
-  for (const e of ctx.store.listEvents(ctx.run.id))
+  for (const e of ctx.store.listAllEvents(ctx.run.id))
     if (e.type === 'test.result' && e.result.target === target) byKind.set(e.result.kind, e.result)
   return [...byKind.values()]
 }
@@ -164,7 +164,7 @@ function latestVerdict(ctx: StageContext, target: Target): Verdict | undefined {
 /** Finding ids a human accepted: one by one through a control payload, or all remaining ones when a critic escalation was accepted. */
 function acceptedFindings(ctx: StageContext): Set<string> {
   const accepted = new Set<string>()
-  for (const e of ctx.store.listEvents(ctx.run.id)) {
+  for (const e of ctx.store.listAllEvents(ctx.run.id)) {
     if (
       e.type === 'control' &&
       e.action === 'approve' &&
@@ -193,7 +193,7 @@ function coreSummary(ctx: StageContext): CoreSummary | undefined {
   const wasm = ctx.store.listArtifacts(ctx.run.id).find((a) => a.kind === 'wasm-module')
   if (!wasm) return undefined
   const parity: CoreSummary['parity'] = []
-  for (const e of ctx.store.listEvents(ctx.run.id)) {
+  for (const e of ctx.store.listAllEvents(ctx.run.id)) {
     if (
       e.type === 'test.result' &&
       e.result.kind === 'parity' &&

@@ -19,6 +19,7 @@
   },
   "devDependencies": {
     "typescript": "catalog:",
-    "vue-tsc": "catalog:"
+    "vue-tsc": "catalog:",
+    "webmcp-types": "^0.1.10"
   }
 }

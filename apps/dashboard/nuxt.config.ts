@@ -4,7 +4,7 @@ export default defineNuxtConfig({
   modules: ['@pinia/nuxt'],
   devtools: { enabled: false },
   devServer: { port: 4311 },
-  css: ['~/assets/main.css', '~/assets/board.css'],
+  css: ['~/assets/main.css', '~/assets/board.css', '~/assets/review.css'],
   runtimeConfig: {
     public: {
       apiBase: '/api/v1',

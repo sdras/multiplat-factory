@@ -12,6 +12,8 @@ export type AgentEvent =
 
 export interface AgentRunOptions {
   prompt: string
+  /** Restrict the available tool surface (chat uses Read only). */
+  tools?: string[]
   /** A custom system prompt, or the Claude Code preset with an appended instruction. */
   systemPrompt?: string | { preset: 'claude_code'; append?: string }
   cwd: string
@@ -67,6 +69,7 @@ export async function runAgent(opts: AgentRunOptions): Promise<AgentRunResult> {
 
   const options: Options = {
     cwd: opts.cwd,
+    tools: opts.tools,
     additionalDirectories: opts.readDirs,
     model: opts.model,
     effort: opts.effort,

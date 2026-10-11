@@ -69,7 +69,7 @@ function gather(ctx: StageContext): Gathered | StageOutcome {
   const workspace = join(ctx.run.runDir, 'workspace', target)
   if (!existsSync(workspace))
     return { status: 'skipped', reason: `no generated project for ${target}` }
-  const events = ctx.store.listEvents(ctx.run.id)
+  const events = ctx.store.listAllEvents(ctx.run.id)
   const latestTests = new Map<string, TestResult>()
   for (const e of events)
     if (e.type === 'test.result' && e.result.target === target)

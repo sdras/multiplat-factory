@@ -1,5 +1,35 @@
 <script setup lang="ts">
 const route = useRoute()
+const review = useProjectReview()
+let reviewPoll: ReturnType<typeof setInterval> | undefined
+watch(
+  () => route.fullPath,
+  () => {
+    const id = typeof route.params.id === 'string' ? route.params.id : ''
+    if (review.runId.value !== id) review.state.value = undefined
+    review.runId.value = id
+    const last = route.path.split('/').pop()
+    review.context.value = {
+      page:
+        last === 'plan'
+          ? 'plan'
+          : last === 'tests'
+            ? 'tests'
+            : last === 'release'
+              ? 'release'
+              : 'project',
+      feedbackIds: review.context.value.feedbackIds,
+    }
+    if (id) void review.refresh()
+  },
+  { immediate: true },
+)
+onMounted(() => {
+  reviewPoll = setInterval(() => {
+    if (review.open.value) void review.refresh()
+  }, 4000)
+})
+onUnmounted(() => clearInterval(reviewPoll))
 const { style, isBoard } = useDashboardStyle()
 const { ok, checked } = useHealth()
 const host = ref('')
@@ -52,7 +82,13 @@ const detailHero = computed(() => {
 })
 </script>
 <template>
-  <div class="shell" :class="{ 'release-board': isBoard }">
+  <div
+    class="shell"
+    :class="{
+      'release-board': isBoard,
+      'with-project-chat': review.open.value && review.runId.value,
+    }"
+  >
     <header class="topbar">
       <NuxtLink to="/" class="brand" aria-label="Multiplat Factory, projects"
         ><AppMark /><span class="lbl brand-name">Multiplat Factory</span></NuxtLink
@@ -69,6 +105,15 @@ const detailHero = computed(() => {
         /><span class="lbl">{{ ok ? 'Live' : checked ? 'Offline' : 'Checking' }}</span
         ><span v-if="!isBoard" class="mono muted small">{{ host }}</span>
       </div>
+      <button
+        v-if="review.runId.value"
+        class="btn chat-launcher"
+        :aria-expanded="review.open.value"
+        aria-controls="project-chat"
+        @click="review.open.value = !review.open.value"
+      >
+        Chat
+      </button>
       <DashboardStyleSwitcher />
     </header>
     <nav v-if="isBoard" class="board-nav" aria-label="Workspace">
@@ -100,5 +145,7 @@ const detailHero = computed(() => {
         :art="detailHero[2]"
       /><slot />
     </main>
+    <ProjectChat v-if="review.runId.value" />
+    <DesignReview v-if="review.runId.value && review.designOpen.value" :key="review.runId.value" />
   </div>
 </template>

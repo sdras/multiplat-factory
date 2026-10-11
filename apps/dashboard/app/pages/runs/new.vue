@@ -154,6 +154,8 @@ async function submit() {
       options: {
         ...(previous.value
           ? {
+              parentRunId: previous.value.id,
+              revisionInstructions: previous.value.options.revisionInstructions,
               models: previous.value.options.models,
               effort: previous.value.options.effort,
               e2e: previous.value.options.e2e,

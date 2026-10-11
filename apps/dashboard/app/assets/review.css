@@ -1,0 +1,379 @@
+/* Review tools share the dashboard's colors in both visual styles. */
+.project-chat {
+  position: fixed;
+  z-index: 30;
+  inset: 76px 0 0 auto;
+  width: 430px;
+  display: flex;
+  flex-direction: column;
+  border-left: 1px solid var(--border);
+  background: var(--surface, #292630);
+  color: var(--ink);
+  box-shadow: -16px 0 48px #0002;
+}
+.with-project-chat > main {
+  width: calc(100% - 430px);
+  margin-right: 430px;
+}
+.project-chat-head,
+.review-dialog-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 16px;
+  padding: 20px 22px;
+  border-bottom: 1px solid var(--border);
+}
+.project-chat h2,
+.annotation-dialog h2 {
+  font: inherit;
+  font-size: 20px;
+  font-weight: 600;
+  margin: 0;
+}
+.project-chat h3,
+.annotation-dialog h3 {
+  font: inherit;
+  font-size: 15px;
+  font-weight: 600;
+  margin: 0 0 10px;
+}
+.project-chat p,
+.annotation-dialog p {
+  margin: 8px 0;
+  line-height: 1.55;
+}
+.project-chat-head p,
+.review-dialog-head p {
+  color: var(--ink-2);
+  font-size: 12px;
+  margin-bottom: 0;
+}
+.review-tabs {
+  display: flex;
+  padding: 0 20px;
+  border-bottom: 1px solid var(--border);
+  gap: 22px;
+}
+.review-tabs button {
+  background: none;
+  color: var(--ink-2);
+  border: 0;
+  border-bottom: 2px solid transparent;
+  padding: 15px 0;
+  cursor: pointer;
+}
+.review-tabs button[aria-pressed='true'] {
+  color: var(--ink);
+  border-bottom-color: #c5afe3;
+}
+.review-tabs span {
+  padding: 2px 6px;
+  background: #c5afe322;
+  border-radius: 5px;
+  margin-left: 4px;
+}
+.review-transcript {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  padding: 22px;
+  overscroll-behavior: contain;
+}
+.review-message {
+  margin-bottom: 24px;
+  font-size: 13px;
+}
+.review-message.user {
+  border-radius: 12px;
+  padding: 14px 16px;
+  background: #c5afe313;
+  border: 1px solid #c5afe31c;
+  margin-left: 22px;
+}
+.review-message.system {
+  color: var(--ink-2);
+  border-left: 2px solid #c5afe34d;
+  padding-left: 12px;
+}
+.review-speaker {
+  font-size: 11px;
+  color: var(--ink-2);
+}
+.review-speaker > span {
+  opacity: 0.8;
+}
+.review-prose {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.review-proposal,
+.review-attention,
+.review-feedback {
+  padding: 17px;
+  margin-bottom: 20px;
+  border-radius: 12px;
+  border: 1px solid #c5afe33d;
+  background: #c5afe309;
+  font-size: 13px;
+}
+.review-feedback.resolved {
+  opacity: 0.7;
+}
+.review-feedback .row {
+  margin-top: 12px;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.review-feedback .btn {
+  font-size: 11px;
+  padding: 7px 9px;
+  height: auto;
+}
+.review-budget {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin: 18px 0;
+  gap: 12px;
+}
+.review-budget input {
+  width: 80px;
+}
+.review-composer {
+  flex-shrink: 0;
+  padding: 16px 20px;
+  border-top: 1px solid var(--border);
+}
+.project-chat textarea,
+.annotation-dialog textarea,
+.project-chat select {
+  width: 100%;
+  resize: vertical;
+  min-height: 44px;
+  background: #0002;
+  color: var(--ink);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 12px;
+  font: inherit;
+  font-size: 13px;
+  line-height: 1.5;
+}
+.review-compose-footer {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 16px;
+  margin-top: 10px;
+  font-size: 11px;
+  color: var(--ink-2);
+}
+.review-compose-footer details {
+  max-width: 260px;
+}
+.review-context-chip {
+  font-size: 12px;
+  color: #ddc4f1;
+}
+.review-context-chip button {
+  border: 0;
+  background: none;
+  color: inherit;
+  cursor: pointer;
+}
+.review-error {
+  color: #ffb7af;
+  background: #9e39371a;
+  border-radius: 8px;
+  padding: 12px;
+  margin: 12px;
+  font-size: 13px;
+}
+.review-empty {
+  padding: 8px 0 24px;
+  color: var(--ink-2);
+  font-size: 13px;
+}
+.review-empty .btn {
+  margin-top: 12px;
+  display: block;
+}
+.review-direction {
+  padding-bottom: 20px;
+  margin-bottom: 18px;
+  border-bottom: 1px solid var(--border);
+  font-size: 13px;
+}
+.review-direction label {
+  display: block;
+  margin: 14px 0 8px;
+}
+.review-direction button {
+  margin-top: 12px;
+}
+.review-page-action {
+  margin-bottom: 18px;
+}
+.annotation-dialog {
+  width: min(1240px, 96vw);
+  max-width: 96vw;
+  max-height: 94dvh;
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  background: #26232d;
+  color: var(--ink, #f0edf4);
+  box-shadow: 0 25px 120px #0008;
+}
+.annotation-dialog::backdrop {
+  background: #09080dbb;
+}
+.annotation-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 310px;
+}
+.annotation-canvas-area {
+  padding: 20px;
+  background: #17151c;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 18px;
+  min-width: 0;
+}
+.annotation-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.annotation-toolbar [aria-pressed='true'] {
+  background: #c5afe3;
+  color: #26232d;
+}
+.annotation-surface {
+  position: relative;
+  display: inline-block;
+  line-height: 0;
+  max-width: 100%;
+}
+.annotation-surface.drawing {
+  cursor: crosshair;
+  touch-action: none;
+  user-select: none;
+}
+.annotation-surface img {
+  display: block;
+  max-width: 100%;
+  max-height: 64dvh;
+  width: auto;
+  height: auto;
+  border-radius: 4px;
+}
+.review-marks {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  overflow: visible;
+}
+.annotation-notes {
+  padding: 24px;
+  border-left: 1px solid var(--border);
+  font-size: 13px;
+}
+.annotation-notes .btn {
+  margin-top: 12px;
+  width: 100%;
+  justify-content: center;
+  height: auto;
+  min-height: 38px;
+  white-space: normal;
+}
+.annotate-button {
+  margin-left: 12px;
+  margin-bottom: 8px;
+}
+.project-chat :focus-visible,
+.annotation-dialog :focus-visible {
+  outline: 2px solid #d0b4ed;
+  outline-offset: 3px;
+}
+@media (max-width: 1050px) {
+  .with-project-chat > main {
+    width: 100%;
+    margin-right: 0;
+  }
+  .project-chat {
+    inset: 76px 0 0 auto;
+    width: min(430px, 100vw);
+    box-shadow: -30px 0 90px #0007;
+  }
+}
+@media (max-width: 650px) {
+  .annotation-layout {
+    grid-template-columns: 1fr;
+  }
+  .annotation-notes {
+    border-left: 0;
+    border-top: 1px solid var(--border);
+  }
+  .annotation-dialog {
+    max-height: 94dvh;
+  }
+  .annotation-surface img {
+    max-height: 43dvh;
+  }
+  .project-chat {
+    inset: 0 0 0 auto;
+    z-index: 60;
+  }
+  .review-dialog-head {
+    padding: 16px;
+  }
+  .annotation-canvas-area {
+    padding: 12px;
+  }
+}
+
+.annotation-compare {
+  max-width: 100%;
+}
+.annotation-compare.paired {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 18px;
+}
+.annotation-compare.paired .annotation-surface img {
+  height: auto;
+  max-width: 100%;
+}
+@media (max-width: 650px) {
+  .annotation-compare.paired {
+    grid-template-columns: 1fr;
+  }
+}
+
+.review-design-launch {
+  padding: 12px 20px 0;
+}
+.design-thumbnails {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+  margin: 16px 0;
+}
+.design-thumbnail {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  cursor: pointer;
+  min-width: 0;
+}
+.design-thumbnail > span {
+  display: block;
+  margin-top: 8px;
+  font-size: 10px;
+}

@@ -271,7 +271,8 @@ async function observeMobile(
     device = emu.serial
     stop = emu.stop
     install = () => installApk(tools, emu.serial, app.product)
-    launch = () => launchAndCheck(tools, emu.serial, app.appId)
+    launch = () =>
+      launchAndCheck(tools, emu.serial, app.appId, app.activity ? { activity: app.activity } : {})
     quit = () => stopApp(tools, emu.serial, app.appId)
   }
 

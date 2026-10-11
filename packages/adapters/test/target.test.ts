@@ -203,7 +203,71 @@ describe('compileMaestroFlow', () => {
     // A source app whose rows carry no hook has nothing to select by.
     const source = compileMaestroFlow(spec, b, { ...opts, navigation: 'none', sourceHooks: [] })
     expect(source.unverifiable).toContain('rows carry no hook')
+    // Ten rows do not fit a phone and a lazy list composes only what is on screen.
+    const long = compileMaestroFlow(
+      spec,
+      { ...b, steps: [{ op: 'expectCount', element: 'count-value', count: 10 }] },
+      opts,
+    )
+    expect(long.unverifiable).toMatch(/larger counts cannot be checked/)
+    expect(long.yaml).not.toContain('index: 9')
   })
+  it('replaces {{unique}} with the same fresh token across a flow', () => {
+    const b: Behavior = {
+      id: 'B-017',
+      title: 'sign up',
+      screen: 'settings',
+      priority: 'must',
+      category: 'state',
+      evidence: [],
+      verifiedOnSource: false,
+      steps: [
+        { op: 'type', element: 'step-input', text: 'user-{{unique}}@example.com' },
+        {
+          op: 'expectText',
+          element: 'count-value',
+          text: 'user-{{unique}}@example.com',
+          exact: true,
+        },
+      ],
+    }
+    const { yaml } = compileMaestroFlow(spec, b, opts)
+    expect(yaml).not.toContain('{{unique}}')
+    const tokens = [...yaml.matchAll(/user-([a-z0-9]+)@example\.com/g)].map((m) => m[1])
+    expect(tokens.length).toBeGreaterThanOrEqual(2)
+    expect(new Set(tokens).size).toBe(1)
+    // A second compile gets a different identity.
+    expect(compileMaestroFlow(spec, b, opts).yaml).not.toContain(`user-${tokens[0]}@`)
+  })
+
+  it('waits for an element without touching the screen before it scrolls for it', () => {
+    const b: Behavior = {
+      id: 'B-018',
+      title: 'snackbar',
+      screen: 'counter',
+      priority: 'must',
+      category: 'state',
+      evidence: [],
+      verifiedOnSource: false,
+      steps: [
+        { op: 'expectVisible', element: 'count-value' },
+        { op: 'expectText', element: 'count-value', text: 'Saved', exact: false },
+      ],
+    }
+    const { yaml } = compileMaestroFlow(spec, b, opts)
+    // A swipe dismisses a snackbar, so the no-touch wait comes first and the scroll only after.
+    const wait = yaml.indexOf(
+      '- extendedWaitUntil:\n    visible:\n      id: "count-value"\n    timeout',
+    )
+    const scroll = yaml.indexOf('- scrollUntilVisible:\n    element:\n      id: "count-value"')
+    expect(wait).toBeGreaterThan(-1)
+    expect(wait).toBeLessThan(scroll)
+    const textWait = yaml.indexOf('text: ".*Saved.*"\n    timeout')
+    const textScroll = yaml.indexOf('- scrollUntilVisible:', textWait)
+    expect(textWait).toBeGreaterThan(-1)
+    expect(textScroll).toBeGreaterThan(textWait)
+  })
+
   it('dismisses the keyboard on Android only while an input method is on screen', () => {
     const b: Behavior = {
       id: 'B-016',
@@ -990,6 +1054,49 @@ describe('qualified taps and restarts on a target app', () => {
     const plain: Behavior = { ...base, steps: [{ op: 'tap', element: 'note-row' }] }
     expect(compileMaestroFlow(notes, plain, opts).yaml).toContain('- tapOn:\n    id: "note_row"\n')
     expect(compileMaestroFlow(notes, plain, opts).yaml).not.toContain('containsDescendants')
+  })
+
+  it('on the source app, never turns a prose selector or label into a text matcher', () => {
+    const prose: AppSpec = {
+      ...notes,
+      screens: notes.screens.map((sc) => ({
+        ...sc,
+        elements: sc.elements.map((e) =>
+          e.id === 'note-row'
+            ? {
+                ...e,
+                kind: 'list' as const,
+                label: 'Task row',
+                sourceSelector: 'clickable row LinearLayout inside tasks_list (task_item.xml root)',
+              }
+            : e,
+        ),
+      })),
+    }
+    // A text qualifier is a real matcher; an unqualified step on the element has nothing to go by.
+    const b: Behavior = {
+      ...base,
+      screen: notes.navigation.root,
+      steps: [{ op: 'expectVisible', element: 'note-row' }],
+    }
+    const out = compileMaestroFlow(prose, b, { ...src, sourceHooks: ['title-input'] })
+    expect(out.unverifiable).toMatch(/no test hook/)
+    expect(out.yaml).not.toMatch(/Task row|clickable row/)
+    // A button's label is its caption and still works as the matcher.
+    const captioned: AppSpec = {
+      ...prose,
+      screens: prose.screens.map((sc) => ({
+        ...sc,
+        elements: sc.elements.map((e) =>
+          e.id === 'note-row'
+            ? { ...e, kind: 'button' as const, label: 'Save', sourceSelector: undefined }
+            : e,
+        ),
+      })),
+    }
+    expect(
+      compileMaestroFlow(captioned, b, { ...src, sourceHooks: ['title-input'] }).yaml,
+    ).toContain('text: "(?i)Save"')
   })
 
   it('on the source app, taps a hooked row by id and text and an unhooked one by text alone', () => {

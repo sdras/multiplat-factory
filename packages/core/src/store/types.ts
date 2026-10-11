@@ -17,6 +17,8 @@ export interface RunStore {
   /** Assigns a per-run monotonic `seq` and persists. */
   appendEvent(event: EventInput): Event
   listEvents(runId: string, afterSeq?: number, limit?: number): Event[]
+  /** Every event after `afterSeq`, however many: readers that derive state (reports, verdict ledgers, the dashboard replay) must not stop at a page. */
+  listAllEvents(runId: string, afterSeq?: number): Event[]
 
   addArtifact(artifact: Artifact): void
   listArtifacts(runId: string): Artifact[]

@@ -1,3 +1,5 @@
+import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
@@ -129,5 +131,31 @@ describe('test hooks', () => {
     writeFileSync(join(root, 'app/res/layout/main.xml'), '<Button android:id="@+id/save" />')
     const inv = await buildInventory(root, {})
     expect(inv.hints.testHooks).toEqual(['info', 'save', 'toggle-all'])
+  })
+})
+
+describe('android view ids as test hooks', () => {
+  it('keeps layout ids and drops menu item and navigation destination ids', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'mpf-inv-'))
+    const res = join(dir, 'app', 'src', 'main', 'res')
+    for (const sub of ['layout', 'menu', 'navigation'])
+      mkdirSync(join(res, sub), { recursive: true })
+    writeFileSync(
+      join(res, 'layout', 'tasks_frag.xml'),
+      '<LinearLayout android:id="@+id/tasks_list" />',
+    )
+    writeFileSync(
+      join(res, 'menu', 'tasks_menu.xml'),
+      '<menu><item android:id="@+id/menu_clear" /></menu>',
+    )
+    writeFileSync(
+      join(res, 'navigation', 'nav_graph.xml'),
+      '<navigation><fragment android:id="@+id/tasks_fragment_dest" /></navigation>',
+    )
+    writeFileSync(join(dir, 'app', 'build.gradle'), "plugins { id 'com.android.application' }")
+    const inv = await buildInventory(dir, { framework: 'views' })
+    expect(inv.hints.testHooks).toContain('tasks_list')
+    expect(inv.hints.testHooks).not.toContain('menu_clear')
+    expect(inv.hints.testHooks).not.toContain('tasks_fragment_dest')
   })
 })

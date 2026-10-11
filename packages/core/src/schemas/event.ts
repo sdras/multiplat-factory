@@ -4,6 +4,7 @@ import { Artifact } from './artifact.ts'
 import { Run } from './run.ts'
 import { Stage } from './stage.ts'
 import { TestResult } from './testresult.ts'
+import { ReviewEntry } from './review.ts'
 import { Verdict } from './verdict.ts'
 
 export const EventBase = z.object({
@@ -13,6 +14,7 @@ export const EventBase = z.object({
 })
 
 export const EventPayload = z.discriminatedUnion('type', [
+  z.object({ type: z.literal('review.entry'), entry: ReviewEntry }),
   z.object({ type: z.literal('run.status'), run: Run }),
   z.object({ type: z.literal('stage.status'), stage: Stage }),
   z.object({

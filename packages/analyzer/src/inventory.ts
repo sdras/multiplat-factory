@@ -362,9 +362,11 @@ export async function buildInventory(
         if (p.re.test(text)) bump(hits.integration, `${p.label} @ ${rel}`)
       for (const p of STATE) if (p.re.test(text)) bump(hits.state, `${p.label} @ ${rel}`)
       for (const p of ROUTES) if (p.re.test(text)) bump(hits.route, `${p.label} @ ${rel}`)
-      for (const re of TEST_HOOKS)
+      for (const re of TEST_HOOKS) {
+        if (re === ANDROID_VIEW_ID && NOT_VIEW_ID_FILES.test(rel)) continue
         for (const m of text.matchAll(re))
           if (m[1] && testHooks.size < 400) testHooks.add(normalizeHook(m[1]))
+      }
       if (HTML_ID_LANGUAGES.has(language))
         for (const m of text.matchAll(HTML_ID))
           if (m[1] && testHooks.size < 400) testHooks.add(normalizeHook(m[1]))
@@ -428,6 +430,10 @@ function bump(map: Map<string, number>, key: string) {
 const CONFIG_FILES =
   /^(package\.json|tsconfig.*|vite\.config.*|next\.config.*|nuxt\.config.*|svelte\.config.*|angular\.json|.*\.gradle(\.kts)?|settings\.gradle.*|gradle\.properties|local\.properties|proguard.*|podfile|package\.swift|info\.plist|.*\.entitlements|.*\.xcconfig|.*\.plist|eslint.*|prettier.*|\.babelrc|babel\.config.*|jest\.config.*|vitest\.config.*|playwright\.config.*|tailwind\.config.*|postcss\.config.*|manifest\.json|androidmanifest\.xml|project\.pbxproj)$/
 
+/** `android:id` in layouts is a view id a test can address; in `res/menu` and `res/navigation` it names a menu item or a destination, which never appear in the view hierarchy. */
+const ANDROID_VIEW_ID = /android:id="@\+id\/([^"]+)"/g
+const NOT_VIEW_ID_FILES = /(^|\/)res\/(menu|navigation)\//
+
 /** Test hooks the source already exposes; the AppSpec must reuse them as element testIds. */
 const TEST_HOOKS: RegExp[] = [
   /data-testid=["']([^"'{}$]+)["']/g,
@@ -444,7 +450,7 @@ const TEST_HOOKS: RegExp[] = [
   /\btestTag\s*=\s*["']([^"']+)["']/g,
   // Components that take the hook as a named argument or prop (`testId = "nav-counter"`, `testId: 'x'`)
   /\btestId\s*[=:]\s*["']([^"']+)["']/g,
-  /android:id="@\+id\/([^"]+)"/g,
+  ANDROID_VIEW_ID,
 ]
 
 /**

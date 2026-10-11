@@ -1,4 +1,5 @@
 import type { AppSpec, Behavior, Element } from '@mpf/core'
+import { UNIQUE_PLACEHOLDER, uniqueToken } from './web/executor.ts'
 
 /** Test id every scaffold puts on its root view (`AppRoot` on iOS and Android, `#app` on the web). */
 export const ROOT_TEST_ID = 'mpf-root'
@@ -38,6 +39,12 @@ export interface CompiledMaestro {
  * testId, which the generated app exposes as a resource id (Compose testTag with
  * testTagsAsResourceId, or accessibilityIdentifier on iOS).
  */
+/** The most rows an `expectCount` can check on a device; beyond this a lazy list has not composed them. */
+const MAX_COUNTED_ROWS = 6
+
+/** Element kinds whose AppSpec label is the caption a user sees, so it can stand in for a missing hook. */
+const CAPTIONED_KINDS = new Set<string>(['button', 'link', 'text'])
+
 /** Maestro's pointer gestures; a behavior's tap, doubleTap, and longPress steps map onto them one to one. */
 type Gesture = 'tapOn' | 'doubleTapOn' | 'longPressOn'
 
@@ -55,6 +62,9 @@ export function compileMaestroFlow(
     '---',
   ]
   const unverifiable: string[] = []
+  // One fresh token per compiled flow: `{{unique}}` in typed and expected text (a sign-up email).
+  const unique = uniqueToken()
+  const fillUnique = (text: string) => text.replaceAll(UNIQUE_PLACEHOLDER, unique)
   const firstOp = behavior.steps[0]?.op
   // Maestro matches ids as regular expressions; a templated id (`line-total-<SKU>`) becomes a prefix match.
   const idOf = (elementId: string): string => {
@@ -193,10 +203,19 @@ export function compileMaestroFlow(
    */
   const labelText = (elementId: string): string | undefined => {
     const el = elements.get(elementId)
+    // A mobile selector is the text on screen or a content description, never an explanation of
+    // where the element sits: prose ("toolbar navigation button, found by content-description …")
+    // would become a text regex that matches nothing and fail the flow instead of leaving it
+    // unverifiable.
+    const prose = (t: string) =>
+      t.length > 60 || /[()[\]{}:;]/.test(t) || /\s(inside|found by|with|in)\s/.test(t)
     const selector = el?.sourceSelector?.trim()
-    if (selector && !/[.#[\]>:=]/.test(selector)) return selector
-    const label = el?.label?.trim()
-    return label && label.length <= 40 && !/[()[\]{}:;]/.test(label) ? label : undefined
+    if (selector && !/[.#[\]>:=]/.test(selector) && !prose(selector)) return selector
+    // A bare label is the caption only for controls that show one (a button reads "Save"); for a
+    // row, a list, or a field it is a name ("Task row") that matches nothing on screen.
+    if (!el || !CAPTIONED_KINDS.has(el.kind)) return undefined
+    const label = el.label?.trim()
+    return label && label.length <= 40 && !prose(label) ? label : undefined
   }
   const revealText = (text: string): string[] => [
     `- scrollUntilVisible:`,
@@ -378,14 +397,14 @@ export function compileMaestroFlow(
           step.op === 'tap' ? 'tapOn' : step.op === 'doubleTap' ? 'doubleTapOn' : 'longPressOn'
         if (sourceApp && !isHooked(step.element)) {
           const tap =
-            sourceTap(step.element, step.text, gesture) ??
+            sourceTap(step.element, step.text && fillUnique(step.text), gesture) ??
             (step.op === 'tap' && backLike(step.element, step.element) ? platformBack() : undefined)
           if (!tap) return unhooked(step.element)
           lines.push(...tap)
           advance(step.element)
           break
         }
-        lines.push(...tapById(idOf(step.element), step.text, gesture))
+        lines.push(...tapById(idOf(step.element), step.text && fillUnique(step.text), gesture))
         advance(step.element)
         break
       }
@@ -399,7 +418,7 @@ export function compileMaestroFlow(
           break
         }
         lines.push('- eraseText')
-        lines.push(...inputLines(step.text))
+        lines.push(...inputLines(step.text.replaceAll(UNIQUE_PLACEHOLDER, unique)))
         lines.push(...dismissKeyboard())
         break
       case 'select':
@@ -413,9 +432,15 @@ export function compileMaestroFlow(
           const label = labelText(step.element)
           if (!label) return unhooked(step.element)
           const text = `(?i)${escapeRegex(label)}`
-          lines.push(...revealText(text), `- assertVisible:`, `    text: ${yamlString(text)}`)
+          lines.push(
+            ...waitFor([`text: ${yamlString(text)}`]),
+            ...revealText(text),
+            `- assertVisible:`,
+            `    text: ${yamlString(text)}`,
+          )
           break
         }
+        lines.push(...waitFor([`id: ${yamlString(idOf(step.element))}`]))
         lines.push(...reveal(idOf(step.element)))
         lines.push(`- assertVisible:`, `    id: ${yamlString(idOf(step.element))}`)
         break
@@ -431,17 +456,27 @@ export function compileMaestroFlow(
         break
       }
       case 'expectText': {
-        const pattern = step.exact ? step.text : `.*${escapeRegex(step.text)}.*`
+        const pattern = step.exact
+          ? fillUnique(step.text)
+          : `.*${escapeRegex(fillUnique(step.text))}.*`
         if (sourceApp && !isHooked(step.element)) {
           // No hook to anchor on: the text itself has to be on screen.
           lines.push(...revealText(pattern), `- assertVisible:`, `    text: ${yamlString(pattern)}`)
           break
         }
-        lines.push(...reveal(idOf(step.element)))
-        lines.push(...expectText(idOf(step.element), pattern))
+        lines.push(...expectText(idOf(step.element), pattern, reveal(idOf(step.element))))
         break
       }
       case 'expectCount': {
+        // A phone shows a handful of rows and a lazy list composes only those, so "row N-1 is on
+        // screen" cannot be asked for a long list: the rows past the fold do not exist yet and the
+        // index of the ones that do shifts as the list scrolls.
+        if (step.count > MAX_COUNTED_ROWS) {
+          unverifiable.push(
+            `expectCount ${step.count} on ${step.element}: a phone shows about ${MAX_COUNTED_ROWS} rows and lazy lists compose only those, so larger counts cannot be checked on a device`,
+          )
+          break
+        }
         // Maestro cannot count, but a count is checkable as "row N-1 is on screen and row N is not":
         // with index-based row ids by id, otherwise with Maestro's `index` on the shared id (the
         // N-th match). Only a source app without a hook for the rows has nothing to select by.
@@ -563,7 +598,11 @@ export function compileMaestroFlow(
  * appears, require the label on a descendant of the tagged node instead. Both forms fail the
  * flow if the text is genuinely absent.
  */
-function expectText(id: string, text: string): string[] {
+/**
+ * Wait for the text without touching the screen first: a snackbar or toast is gone after a swipe,
+ * and the reveal scroll is a swipe. Only an element that never appeared is scrolled for.
+ */
+function expectText(id: string, text: string, revealLines: string[] = []): string[] {
   return [
     `- extendedWaitUntil:`,
     `    visible:`,
@@ -571,6 +610,7 @@ function expectText(id: string, text: string): string[] {
     `      text: ${yamlString(text)}`,
     `    timeout: ${DIRECT_TEXT_WAIT_MS}`,
     `    optional: true`,
+    ...revealLines,
     `- runFlow:`,
     `    when:`,
     `      notVisible:`,
@@ -581,6 +621,17 @@ function expectText(id: string, text: string): string[] {
     `          id: ${yamlString(id)}`,
     `          containsDescendants:`,
     `            - text: ${yamlString(text)}`,
+  ]
+}
+
+/** A no-touch wait for a selector (lines at the selector's own indentation), optional so a scroll can follow. */
+function waitFor(selectorLines: string[]): string[] {
+  return [
+    `- extendedWaitUntil:`,
+    `    visible:`,
+    ...selectorLines.map((l) => `      ${l}`),
+    `    timeout: ${DIRECT_TEXT_WAIT_MS}`,
+    `    optional: true`,
   ]
 }
 

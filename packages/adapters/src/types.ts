@@ -60,6 +60,8 @@ export interface MobileSourceApp {
   appId: string
   /** Absolute path of the .app bundle or .apk. */
   product: string
+  /** Android: the launcher activity from the APK's manifest (`pkg/.MainActivity` is only a convention of the factory's own scaffolds). */
+  activity?: string
   /** Environment with the toolchain resolved (DEVELOPER_DIR, JAVA_HOME, ANDROID_HOME). */
   env: NodeJS.ProcessEnv
   notes: string[]

@@ -27,6 +27,8 @@ export const ModelConfig = z.object({
 export type ModelConfig = z.infer<typeof ModelConfig>
 
 export const RunOptions = z.object({
+  parentRunId: Id.optional(),
+  revisionInstructions: z.array(z.object({ stageId: z.string(), text: z.string() })).default([]),
   coreMode: CoreMode.default('auto'),
   budgetUsd: z.number().positive().max(100).default(30),
   models: ModelConfig.prefault({}),

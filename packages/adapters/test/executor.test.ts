@@ -402,6 +402,30 @@ describe.skipIf(!browser)('web executor', () => {
     expect(direct.error).toMatch(/parameterized route "\/todo\/\[id\]"/)
   }, 30_000)
 
+  it('replaces {{unique}} with one fresh token per flow in typed and expected text', async () => {
+    const r = await executeBehavior(
+      browser!,
+      baseUrl,
+      todoSpec,
+      {
+        ...behavior([
+          { op: 'type', element: 'new-todo', text: 'user-{{unique}}@example.com\n' },
+          {
+            op: 'expectText',
+            element: 'todo-label',
+            text: 'user-{{unique}}@example.com',
+            exact: true,
+          },
+          { op: 'expectText', element: 'todo-list', text: '{{unique}}', exact: false },
+        ]),
+        screen: 'todos',
+      },
+      undefined,
+      () => {},
+    )
+    expect(r.ok, r.error).toBe(true)
+  }, 30_000)
+
   it('counts every element a repeated selector matches, not only the first', async () => {
     const r = await executeBehavior(
       browser!,

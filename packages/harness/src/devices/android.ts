@@ -3,13 +3,16 @@ import { join } from 'pathe'
 import { execa, type ResultPromise } from 'execa'
 import type { MpfConfig } from '@mpf/core'
 import { runProcess } from '../exec.ts'
-import { resolveAndroidHome, resolveJavaHome } from '../toolchain/checks/android.ts'
+import { gradleJdkRange, resolveAndroidHome, resolveJava } from '../toolchain/checks/android.ts'
 
 export interface AndroidTools {
   sdk: string
   adb: string
   emulator: string
   javaHome?: string
+  /** The JDK's major version, and whether it is one the requested Gradle runs on. */
+  javaMajor?: number
+  javaInRange?: boolean
   /** Environment to hand to Gradle and the SDK tools. */
   env: NodeJS.ProcessEnv
 }
@@ -18,6 +21,7 @@ export interface AndroidTools {
 export async function androidTools(
   config: MpfConfig,
   env: NodeJS.ProcessEnv = process.env,
+  opts: { gradleVersion?: string } = {},
 ): Promise<AndroidTools | undefined> {
   const ctx = { env, platform: process.platform, toolchain: config.toolchain }
   const brewPrefix =
@@ -30,7 +34,11 @@ export async function androidTools(
       : undefined
   const sdk = resolveAndroidHome(ctx, brewPrefix || undefined)
   if (!sdk) return undefined
-  const javaHome = await resolveJavaHome(ctx)
+  const java = await resolveJava(
+    ctx,
+    opts.gradleVersion ? gradleJdkRange(opts.gradleVersion) : undefined,
+  )
+  const javaHome = java?.home
   const exe = process.platform === 'win32' ? '.exe' : ''
   const merged: NodeJS.ProcessEnv = {
     ...env,
@@ -51,6 +59,8 @@ export async function androidTools(
     adb: join(sdk, 'platform-tools', `adb${exe}`),
     emulator: join(sdk, 'emulator', `emulator${exe}`),
     javaHome,
+    javaMajor: java?.major,
+    javaInRange: java?.inRange,
     env: merged,
   }
 }

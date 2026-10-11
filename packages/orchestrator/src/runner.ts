@@ -17,7 +17,13 @@ import {
   type RunStore,
   type Stage,
 } from '@mpf/core'
-import { Lanes, type StageContext, type StageOutcome, type StageRunnerRegistry } from '@mpf/harness'
+import {
+  Lanes,
+  acquireLaneLock,
+  type StageContext,
+  type StageOutcome,
+  type StageRunnerRegistry,
+} from '@mpf/harness'
 import { buildStageGraph } from './graph.ts'
 import {
   UNREACHABLE,
@@ -126,27 +132,55 @@ export class Orchestrator {
       live.wake?.()
       return live.loop
     }
-    const run = this.mustRun(runId)
-    if (run.status === 'queued') this.setRunStatus(runId, 'running')
-    // A stage left `running` by a process that stopped (a crash, a kill, a restart) belongs to nobody
-    // now: put it back in the queue with its attempt count intact so the loop can run it again.
-    const at = nowIso()
-    for (const s of this.opts.store.listStages(runId)) {
-      if (s.status === 'running' && !live.controllers.has(s.id)) {
-        const next = transition(s, { type: 'requeue', at })
-        this.opts.store.upsertStage(next)
-        this.emitStage(next)
-        this.emit(runId, s.id, {
-          type: 'log',
-          level: 'warn',
-          message: `${s.id} was interrupted by a stopped process; requeued (attempt ${s.attempt} stays counted)`,
-        })
-      }
-    }
-    live.loop = this.loop(runId, live).finally(() => {
+    // The loop promise is in place before anything is awaited, so a second start in this process
+    // joins it instead of racing for the run's driver lock.
+    live.loop = this.drive(runId, live).finally(() => {
       live.loop = undefined
     })
     return live.loop
+  }
+
+  /** Hold the run's driver lock, requeue stages a dead process left behind, and run the loop. */
+  private async drive(runId: string, live: Live): Promise<void> {
+    // One driver per run across processes: the daemon and a CLI driver share the store, and two
+    // schedulers on one run would requeue each other's stages and run them twice.
+    let releaseDriver: () => void
+    try {
+      releaseDriver = await acquireLaneLock(`run-${runId}`, {
+        dir: join(this.opts.dataDir ?? mpfHome(), 'locks'),
+        maxWaitMs: 1,
+        pollMs: 1,
+        log: () => {},
+      })
+    } catch (err) {
+      const holder = /: (.*)$/.exec((err as Error).message)?.[1] ?? 'another process'
+      throw new Error(
+        `run ${runId} is already being driven by another process (${holder}); stop it before resuming or re-running the run here`,
+        { cause: err },
+      )
+    }
+    try {
+      const run = this.mustRun(runId)
+      if (run.status === 'queued') this.setRunStatus(runId, 'running')
+      // A stage left `running` by a process that stopped (a crash, a kill, a restart) belongs to nobody
+      // now: put it back in the queue with its attempt count intact so the loop can run it again.
+      const at = nowIso()
+      for (const s of this.opts.store.listStages(runId)) {
+        if (s.status === 'running' && !live.controllers.has(s.id)) {
+          const next = transition(s, { type: 'requeue', at })
+          this.opts.store.upsertStage(next)
+          this.emitStage(next)
+          this.emit(runId, s.id, {
+            type: 'log',
+            level: 'warn',
+            message: `${s.id} was interrupted by a stopped process; requeued (attempt ${s.attempt} stays counted)`,
+          })
+        }
+      }
+      await this.loop(runId, live)
+    } finally {
+      releaseDriver()
+    }
   }
 
   /** Parks running and queued stages, aborts their workers, and marks the run paused. */
@@ -539,7 +573,12 @@ export class Orchestrator {
       takeInstructions: () => {
         const list = live.instructions.get(stage.id) ?? []
         live.instructions.set(stage.id, [])
-        return list
+        return [
+          ...run.options.revisionInstructions
+            .filter((i) => i.stageId === stage.id || i.stageId === '*')
+            .map((i) => i.text),
+          ...list,
+        ]
       },
       addArtifact: (input) => {
         const abs = join(run.runDir, input.relPath)

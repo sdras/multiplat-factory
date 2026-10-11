@@ -1,0 +1,86 @@
+[
+  {
+    "messages": [{ "role": "user", "content": "What is holding up this project?" }],
+    "initialState": "An open project with a waiting decision; all nine tools available.",
+    "expectedCall": [{ "functionName": "read_project", "arguments": { "section": "status" } }],
+    "acceptableAnswer": "Explain the recorded issue and offered choices; no mutation."
+  },
+  {
+    "messages": [
+      {
+        "role": "user",
+        "content": "This looks too much like a stretched phone app. Can you suggest a better desktop layout?"
+      }
+    ],
+    "initialState": "An open project with a web preview and completed plan; all nine tools available.",
+    "expectedCall": [
+      { "functionName": "read_project", "arguments": { "section": "previews" } },
+      {
+        "functionName": "propose_revision",
+        "arguments": { "kind": "revision", "targets": ["web"] }
+      }
+    ],
+    "order": "ordered",
+    "acceptableAnswer": "A concrete desktop revision saved for review; no apply_revision call. Read additional plan pages when needed."
+  },
+  {
+    "messages": [
+      { "role": "user", "content": "Point an arrow at the search field and ask for a wider input." }
+    ],
+    "initialState": "The agent has read the preview image and knows its artifact ID; all nine tools available.",
+    "expectedCall": [
+      {
+        "functionName": "add_preview_feedback",
+        "arguments": {
+          "text": "Make the search input wider.",
+          "marks": [
+            {
+              "kind": "arrow",
+              "points": [
+                { "x": 0.75, "y": 0.5 },
+                { "x": 0.5, "y": 0.3 }
+              ]
+            }
+          ]
+        }
+      }
+    ],
+    "acceptableAnswer": "Save a note tied to the actual screenshot ID and grounded coordinates; include a stable requestId."
+  },
+  {
+    "messages": [{ "role": "user", "content": "Apply the sidebar proposal with a $10 budget." }],
+    "initialState": "The sidebar proposal is visible with its scope and ID; the parent is stopped; all nine tools available.",
+    "expectedCall": [
+      {
+        "functionName": "apply_revision",
+        "arguments": { "proposalId": "sidebar-proposal", "budgetUsd": 10, "confirmed": true }
+      }
+    ],
+    "acceptableAnswer": "Report the returned new version ID; do not claim the build has finished."
+  },
+  {
+    "messages": [
+      { "role": "user", "content": "That fix looks right now; resolve the input-width note." }
+    ],
+    "initialState": "Agent has compared before and after and has the feedback ID; all nine tools available.",
+    "expectedCall": [
+      {
+        "functionName": "resolve_feedback",
+        "arguments": { "feedbackId": "input-width-note", "resolved": true }
+      }
+    ],
+    "acceptableAnswer": "Confirm the note is resolved only after successful execution."
+  },
+  {
+    "messages": [{ "role": "user", "content": "Go ahead with that change." }],
+    "initialState": "Two proposals exist and no budget has been approved; all nine tools available.",
+    "expectedCall": [],
+    "acceptableAnswer": "Ask which proposal and budget; do not infer approval for either."
+  },
+  {
+    "messages": [{ "role": "user", "content": "Apply the reviewed change with a $10 budget." }],
+    "initialState": "apply_revision returns a state error because the parent is still running.",
+    "expectedCall": [],
+    "acceptableAnswer": "Explain the running-build condition and tell the user to wait or pause; do not claim success or blindly retry."
+  }
+]

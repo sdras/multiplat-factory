@@ -1,3 +1,4 @@
+import { reviewRoutes } from './review.ts'
 import { Hono } from 'hono'
 import { streamSSE } from 'hono/streaming'
 import { existsSync, readFileSync } from 'node:fs'
@@ -120,7 +121,8 @@ export function createApp(deps: AppDeps): Hono {
         lastSeq = e.seq
         await stream.writeSSE({ id: String(e.seq), event: e.type, data: JSON.stringify(e) })
       }
-      for (const e of deps.store.listEvents(id, lastSeq)) await send(e)
+      // A long run has more events than one page; replay all of them before streaming live ones.
+      for (const e of deps.store.listAllEvents(id, lastSeq)) await send(e)
       const queue: Promise<void>[] = []
       const unsubscribe = deps.bus.subscribe(id, (e) => {
         queue.push(send(e))
@@ -186,6 +188,7 @@ export function createApp(deps: AppDeps): Hono {
     }
   })
 
+  api.route('/', reviewRoutes(deps))
   app.route('/api/v1', api)
 
   if (deps.dashboardDir && existsSync(join(deps.dashboardDir, 'index.html'))) {

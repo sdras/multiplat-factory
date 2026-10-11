@@ -2,7 +2,12 @@ import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { describe, expect, it } from 'vitest'
-import { androidGradle, xcodeContainer, xcodegenSpec } from '../src/source/mobile.ts'
+import {
+  androidGradle,
+  gradleUnitTestResultDirs,
+  xcodeContainer,
+  xcodegenSpec,
+} from '../src/source/mobile.ts'
 import { summarizeWebTests } from '../src/source/web.ts'
 import { detectSource } from '../src/registry.ts'
 import { makeDetectContext } from '../src/types.ts'
@@ -102,6 +107,20 @@ describe('iOS containers', () => {
 })
 
 describe('android existing tests', () => {
+  it('finds JUnit results under every module build directory, which the file walker otherwise skips', () => {
+    const dir = project({
+      'settings.gradle': "include ':app'",
+      'app/build/test-results/testMockDebugUnitTest/TEST-a.xml': '<testsuite/>',
+      'app/build/test-results/testProdDebugUnitTest/TEST-b.xml': '<testsuite/>',
+      'app/build/test-results/notTests/x.xml': '<testsuite/>',
+      'app/src/test/java/A.kt': '',
+    })
+    expect(gradleUnitTestResultDirs(dir).map((d) => d.slice(dir.length))).toEqual([
+      '/app/build/test-results/testMockDebugUnitTest',
+      '/app/build/test-results/testProdDebugUnitTest',
+    ])
+  })
+
   it('is absent when the project has no unit test sources', async () => {
     const dir = project({
       'settings.gradle': "include ':app'",

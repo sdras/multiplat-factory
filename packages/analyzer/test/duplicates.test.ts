@@ -1,6 +1,11 @@
 import { describe, expect, it } from 'vitest'
 import type { AppSpec } from '@mpf/core'
-import { duplicateTestIdRepairPrompt, duplicateTestIds } from '../src/prompts.ts'
+import {
+  duplicateTestIdRepairPrompt,
+  duplicateTestIds,
+  proseSelectorRepairPrompt,
+  proseSelectors,
+} from '../src/prompts.ts'
 
 const spec = {
   screens: [
@@ -28,5 +33,43 @@ describe('duplicateTestIds', () => {
     expect(prompt).toContain('screen todos: testId "text-input" on new-todo, edit-input')
     expect(prompt).toMatch(/distinct testId/)
     expect(prompt).toMatch(/sourceSelector scoped by an ancestor/)
+  })
+})
+
+describe('proseSelectors', () => {
+  const mobile = {
+    screens: [
+      {
+        id: 'tasks',
+        elements: [
+          {
+            id: 'filter-active',
+            testId: 'filter-active',
+            sourceSelector: 'Popup menu item with resource id `active`; opens from the filter icon',
+          },
+          { id: 'drawer', testId: 'drawer-button', sourceSelector: 'Open navigation drawer' },
+          { id: 'save', testId: 'save', sourceSelector: 'Save' },
+          {
+            id: 'row',
+            testId: 'task-row',
+            sourceSelector: 'clickable row LinearLayout inside tasks_list',
+          },
+        ],
+      },
+    ],
+  } as unknown as AppSpec
+
+  it('flags explanations on mobile and keeps captions and content descriptions', () => {
+    expect(proseSelectors(mobile, 'android').map((p) => p.element)).toEqual([
+      'filter-active',
+      'row',
+    ])
+    expect(proseSelectors(mobile, 'web')).toEqual([])
+  })
+
+  it('asks for the exact caption or content description, or no selector at all', () => {
+    const prompt = proseSelectorRepairPrompt(proseSelectors(mobile, 'android'))
+    expect(prompt).toContain('screen tasks, element filter-active')
+    expect(prompt).toMatch(/exactly the text shown on screen or the content description/)
   })
 })

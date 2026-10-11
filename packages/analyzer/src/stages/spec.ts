@@ -7,6 +7,8 @@ import {
   SPEC_SYSTEM,
   duplicateTestIdRepairPrompt,
   duplicateTestIds,
+  proseSelectorRepairPrompt,
+  proseSelectors,
   specPrompt,
   testIdRepairPrompt,
   unmatchedTestIds,
@@ -132,6 +134,44 @@ export function specStage(_config: MpfConfig, deps: AnalysisDeps = {}): StageRun
         ctx.log(
           duplicates.length ? 'warn' : 'info',
           `${duplicates.length} shared test id(s) remain after repair`,
+        )
+      }
+      // On a phone a selector is a caption or a content description; an explanation is not one.
+      let prose = proseSelectors(spec, ctx.run.source.platform)
+      if (prose.length && result.sessionId) {
+        ctx.log(
+          'warn',
+          `${prose.length} mobile sourceSelector value(s) describe the element instead of naming its text; asking the worker to fix them`,
+        )
+        const repair = await runWorker(
+          ctx,
+          {
+            role: 'generate',
+            budgetShare: 0.05,
+            cwd: sourceDir,
+            systemPrompt: SPEC_SYSTEM,
+            prompt: proseSelectorRepairPrompt(prose),
+            outputSchema: AppSpec,
+            maxTurns: 30,
+            resume: result.sessionId,
+          },
+          agent,
+        )
+        cost += repair.costUsd
+        if (repair.ok && repair.structured) {
+          const repaired = AppSpec.parse(repair.structured)
+          const still = proseSelectors(repaired, ctx.run.source.platform)
+          if (
+            still.length <= prose.length &&
+            unmatchedTestIds(repaired, hooks).length <= unmatched.length
+          ) {
+            spec = repaired
+            prose = still
+          }
+        }
+        ctx.log(
+          prose.length ? 'warn' : 'info',
+          `${prose.length} prose selector(s) remain after repair`,
         )
       }
       writeFileSync(join(ctx.run.runDir, 'appspec.json'), JSON.stringify(spec, null, 2))

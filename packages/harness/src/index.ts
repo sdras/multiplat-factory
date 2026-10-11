@@ -15,7 +15,13 @@ export {
 } from './lanelock.ts'
 export { ALL_CHECKS, deriveLlm, deriveTargets, runDoctor } from './toolchain/doctor.ts'
 export type { CheckContext, CheckFn } from './toolchain/types.ts'
-export { resolveAndroidHome, resolveJavaHome } from './toolchain/checks/android.ts'
+export {
+  gradleJdkRange,
+  gradleWrapperVersion,
+  resolveAndroidHome,
+  resolveJava,
+  resolveJavaHome,
+} from './toolchain/checks/android.ts'
 export type { StageContext, StageOutcome, StageRunner, StageRunnerRegistry } from './stage.ts'
 export {
   androidTools,

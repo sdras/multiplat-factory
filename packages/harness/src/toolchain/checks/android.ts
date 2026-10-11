@@ -1,4 +1,4 @@
-import { existsSync, readdirSync } from 'node:fs'
+import { existsSync, readFileSync, readdirSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { join } from 'pathe'
 import { tryOutput } from '../../exec.ts'
@@ -24,9 +24,9 @@ export async function findJavaCandidates(ctx: CheckContext): Promise<JavaCandida
   add(toolchain.javaHome)
   add(env.JAVA_HOME)
   if (platform === 'darwin') {
-    for (const v of ['21', '17', '24', '23', '22', '17+'])
+    for (const v of ['21', '17', '11', '24', '23', '22', '17+'])
       add(await tryOutput('/usr/libexec/java_home', ['-v', v], env))
-    for (const formula of ['openjdk@21', 'openjdk@17', 'openjdk'])
+    for (const formula of ['openjdk@21', 'openjdk@17', 'openjdk@11', 'openjdk'])
       add(await tryOutput('brew', ['--prefix', formula], env))
   }
   if (platform === 'linux') {
@@ -44,13 +44,29 @@ export async function findJavaCandidates(ctx: CheckContext): Promise<JavaCandida
   return out
 }
 
-/** Prefer the newest supported JDK; fall back to an explicit but unsupported one so the doctor can explain. */
-export async function resolveJavaHome(ctx: CheckContext): Promise<string | undefined> {
+/**
+ * Prefer the newest JDK in the wanted range (the factory's own Gradle by default, a source app's
+ * wrapper when given); fall back to an explicit but unsupported one so the doctor can explain.
+ */
+export async function resolveJava(
+  ctx: CheckContext,
+  range: { min: number; max: number } = { min: JDK_MIN, max: JDK_MAX },
+): Promise<{ home: string; major: number; inRange: boolean } | undefined> {
   const candidates = await findJavaCandidates(ctx)
   const supported = candidates
-    .filter((c) => c.major >= JDK_MIN && c.major <= JDK_MAX)
+    .filter((c) => c.major >= range.min && c.major <= range.max)
     .sort((a, b) => b.major - a.major)
-  return supported[0]?.home ?? candidates[0]?.home
+  const best = supported[0]
+  if (best) return { home: best.home, major: best.major, inRange: true }
+  const any = candidates[0]
+  return any ? { home: any.home, major: any.major, inRange: false } : undefined
+}
+
+export async function resolveJavaHome(
+  ctx: CheckContext,
+  range?: { min: number; max: number },
+): Promise<string | undefined> {
+  return (await resolveJava(ctx, range))?.home
 }
 
 export const javaCheck: CheckFn = async (ctx) => {
@@ -187,4 +203,44 @@ export const androidCheck: CheckFn = async (ctx) => {
     )
   }
   return ok('android', 'Android SDK', detail, { affects: ['android'] })
+}
+
+/** The Gradle version a project's wrapper pins (`distributionUrl=...gradle-7.2-bin.zip`), if any. */
+export function gradleWrapperVersion(projectDir: string): string | undefined {
+  const file = join(projectDir, 'gradle', 'wrapper', 'gradle-wrapper.properties')
+  if (!existsSync(file)) return undefined
+  const m = /distributionUrl=.*gradle-(\d+(?:\.\d+){1,2})-/.exec(readFileSync(file, 'utf8'))
+  return m?.[1]
+}
+
+/**
+ * The JDK majors a Gradle version runs on. A source app brings its own wrapper, and Gradle refuses
+ * class files newer than it knows ("Unsupported class file major version 65" is Gradle 7.2 meeting
+ * JDK 21), so the harness has to hand it a JDK from this range rather than the newest it has.
+ * Gradle's compatibility table: 7.0-7.2 up to 16, 7.3 adds 17, 7.5 18, 7.6 19, 8.3 20, 8.5 21,
+ * 8.8 22, 8.10 23, 8.14 24. AGP 8 (Gradle 8) needs 17 and AGP 7 needs 11 at the low end.
+ */
+export function gradleJdkRange(gradleVersion: string): { min: number; max: number } {
+  const [major = 0, minor = 0] = gradleVersion.split('.').map((n) => Number.parseInt(n, 10))
+  const at = (m: number, n: number) => major > m || (major === m && minor >= n)
+  const max = at(8, 14)
+    ? 24
+    : at(8, 10)
+      ? 23
+      : at(8, 8)
+        ? 22
+        : at(8, 5)
+          ? 21
+          : at(8, 3)
+            ? 20
+            : at(7, 6)
+              ? 19
+              : at(7, 5)
+                ? 18
+                : at(7, 3)
+                  ? 17
+                  : at(7, 0)
+                    ? 16
+                    : 15
+  return { min: major >= 8 ? 17 : 11, max }
 }

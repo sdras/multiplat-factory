@@ -7,30 +7,78 @@ const { isBoard } = useDashboardStyle()
 const target = ref('')
 const checked = ref<Record<string, boolean>>({})
 const storageNotice = ref('')
-const key = `mpf.release-checklist.v1.${id}`
+const review = useProjectReview()
+const legacyKey = `mpf.release-checklist.v1.${id}`
+let migrated = false
 onMounted(() => {
   try {
-    const saved: unknown = JSON.parse(localStorage.getItem(key) ?? '{}')
-    if (saved && typeof saved === 'object' && !Array.isArray(saved))
-      checked.value = Object.fromEntries(
-        Object.entries(saved).filter(([, v]) => typeof v === 'boolean'),
-      )
+    checked.value = JSON.parse(localStorage.getItem(legacyKey) ?? '{}')
   } catch {
-    storageNotice.value = 'Checklist progress is available for this visit only.'
+    /* old browser state was unavailable */
   }
 })
 watch(
-  checked,
-  (value) => {
-    try {
-      localStorage.setItem(key, JSON.stringify(value))
-    } catch {
-      storageNotice.value =
-        'Your browser couldn’t save the checklist. Changes remain for this visit.'
+  () => review.state.value?.entries,
+  async (entries) => {
+    if (!entries) return
+    const serverChecks = entries.filter((e) => e.kind === 'checklist' && e.runId === id)
+    if (!migrated) {
+      migrated = true
+      try {
+        const saved = JSON.parse(localStorage.getItem(legacyKey) ?? '{}') as Record<string, unknown>
+        for (const [key, value] of Object.entries(saved)) {
+          const [platform, item] = key.split(':')
+          if (
+            typeof value === 'boolean' &&
+            !serverChecks.some(
+              (e) => e.kind === 'checklist' && e.target === platform && e.item === item,
+            )
+          )
+            await api.post(`/runs/${id}/review/checklist`, {
+              target: platform,
+              item,
+              checked: value,
+            })
+        }
+        localStorage.removeItem(legacyKey)
+        if (Object.keys(saved).length) {
+          await review.refresh()
+          return
+        }
+      } catch {
+        storageNotice.value =
+          'Some earlier checklist progress could not be copied. Your browser copy is still available.'
+      }
+    }
+    checked.value = {
+      ...checked.value,
+      ...Object.fromEntries(
+        serverChecks.flatMap((e) =>
+          e.kind === 'checklist' ? [[`${e.target}:${e.item}`, e.checked]] : [],
+        ),
+      ),
     }
   },
-  { deep: true },
+  { immediate: true },
 )
+async function setChecked(item: string, event: Event) {
+  try {
+    if (!review.state.value) {
+      checked.value[`${target.value}:${item}`] = (event.target as HTMLInputElement).checked
+      localStorage.setItem(legacyKey, JSON.stringify(checked.value))
+      storageNotice.value = 'Saved in this browser until the updated server is running.'
+      return
+    }
+    await review.action('checklist', {
+      target: target.value,
+      item,
+      checked: (event.target as HTMLInputElement).checked,
+    })
+    storageNotice.value = ''
+  } catch {
+    storageNotice.value = 'This change could not be saved. Try again.'
+  }
+}
 watch(
   () => view.value.run?.targets,
   (targets) => {
@@ -257,12 +305,24 @@ const url = (a: Artifact) => `${api.base}/runs/${id}/artifacts/${a.id}/content`
           <NuxtLink :to="`/runs/${id}/tests`" class="inline small"
             >Review test evidence &amp; previews</NuxtLink
           >
+          <button
+            class="btn review-page-action"
+            @click="
+              review.discuss('release', 'I’d like to request changes before the next release.')
+            "
+          >
+            Request changes
+          </button>
           <h3>Publishing steps</h3>
           <label
             v-for="step in steps"
             :key="target + step.id"
             class="board-check board-release-step"
-            ><input v-model="checked[`${target}:${step.id}`]" type="checkbox" /><span
+            ><input
+              :checked="checked[`${target}:${step.id}`]"
+              type="checkbox"
+              @change="setChecked(step.id, $event)"
+            /><span
               ><strong>{{ step.title }}</strong
               ><span class="hint">{{ step.description }}</span></span
             ></label
@@ -270,7 +330,7 @@ const url = (a: Artifact) => `${api.base}/runs/${id}/artifacts/${a.id}/content`
           <p class="hint" role="status">
             {{
               storageNotice ||
-              'Your checklist is saved in this browser, separately for each run and platform.'
+              'Your checklist is saved with this version, separately for each platform.'
             }}
           </p>
           <p class="hint">

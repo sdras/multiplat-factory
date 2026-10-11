@@ -2,12 +2,14 @@ import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs'
 import { join, relative } from 'pathe'
 import type { AnalysisHints } from '@mpf/core'
 import {
+  type AndroidTools,
   androidTools,
   derivedProductsDir,
+  gradleJdkRange,
+  gradleWrapperVersion,
   runProcess,
   which,
   xcodeTools,
-  type AndroidTools,
 } from '@mpf/harness'
 import { gradleArgs } from '../target/gradle.ts'
 import { parseJUnitXml } from '../target/junit.ts'
@@ -396,10 +398,22 @@ iosXcode.observeMobile = async (ctx, detection, opts) => {
 }
 
 androidGradle.observeMobile = async (ctx, _detection, opts) => {
-  const tools = await androidTools(opts.config, opts.env ?? process.env)
+  // The source brings its own Gradle: hand it a JDK that version runs on, not the newest around.
+  const gradleVersion = gradleWrapperVersion(ctx.dir)
+  const tools = await androidTools(
+    opts.config,
+    opts.env ?? process.env,
+    gradleVersion ? { gradleVersion } : {},
+  )
   if (!tools) {
     opts.log('Android SDK not found; the Android source cannot be built for observation')
     return undefined
+  }
+  if (gradleVersion) {
+    const range = gradleJdkRange(gradleVersion)
+    opts.log(
+      `source wrapper pins Gradle ${gradleVersion} (JDK ${range.min}-${range.max}); using JDK ${tools.javaMajor ?? '?'}${tools.javaInRange === false ? ` which it will refuse: install one in range (brew install openjdk@${range.max >= 17 ? 17 : 11})` : ''}`,
+    )
   }
   const command = await gradleCommand(ctx.dir, tools.env)
   if (!command) {
@@ -429,17 +443,20 @@ androidGradle.observeMobile = async (ctx, _detection, opts) => {
     opts.log('no debug APK under outputs/apk after the build')
     return undefined
   }
-  const appId = await apkPackageName(tools, apk)
-  if (!appId) {
+  const badging = await apkBadging(tools, apk)
+  if (!badging) {
     opts.log(`could not read the application id of ${apk}`)
     return undefined
   }
+  const { packageName: appId, activity } = badging
+  if (activity) opts.log(`launcher activity ${activity}`)
   return {
     platform: 'android',
     appId,
     product: apk,
+    ...(activity ? { activity } : {}),
     env: tools.env,
-    notes: [`apk ${relative(ctx.dir, apk)}`],
+    notes: [`apk ${relative(ctx.dir, apk)}`, ...(activity ? [`launcher ${activity}`] : [])],
   }
 }
 
@@ -449,8 +466,15 @@ async function gradleCommand(dir: string, env: NodeJS.ProcessEnv): Promise<strin
   return (await which('gradle', env)) ? 'gradle' : undefined
 }
 
-/** Application id from the APK's manifest via aapt2 (build-tools), else the newest build-tools' aapt. */
-async function apkPackageName(tools: AndroidTools, apk: string): Promise<string | undefined> {
+/**
+ * Application id and launcher activity from the APK's manifest via aapt2 (build-tools), else the
+ * newest build-tools' aapt. A real app's launcher is rarely `<applicationId>.MainActivity`: the
+ * architecture sample launches `…todoapp.tasks.TasksActivity` under a `.mock` application id.
+ */
+async function apkBadging(
+  tools: AndroidTools,
+  apk: string,
+): Promise<{ packageName: string; activity?: string } | undefined> {
   const buildTools = join(tools.sdk, 'build-tools')
   const versions = existsSync(buildTools) ? readdirSync(buildTools).sort().reverse() : []
   for (const v of versions) {
@@ -464,7 +488,10 @@ async function apkPackageName(tools: AndroidTools, apk: string): Promise<string 
         timeoutMs: 60_000,
       })
       const m = /package: name='([^']+)'/.exec(r.stdout)
-      if (m) return m[1]
+      if (m) {
+        const activity = /launchable-activity: name='([^']+)'/.exec(r.stdout)?.[1]
+        return { packageName: m[1]!, ...(activity ? { activity } : {}) }
+      }
     }
   }
   return undefined
@@ -541,12 +568,31 @@ iosSwiftPM.existingTests = async (ctx, opts) => {
   }
 }
 
+/**
+ * Gradle writes JUnit XML under each module's `build/test-results/test<Variant>UnitTest`. The file
+ * walker skips `build/` (it is output everywhere else), so the result folders are reached from the
+ * build directories themselves.
+ */
+export function gradleUnitTestResultDirs(projectDir: string): string[] {
+  const out: string[] = []
+  for (const build of findFiles(projectDir, (n) => n === 'build', 4)) {
+    const results = join(build, 'test-results')
+    if (!existsSync(results) || !statSync(results).isDirectory()) continue
+    for (const name of readdirSync(results)) {
+      const dir = join(results, name)
+      if (/^test.*UnitTest$/.test(name) && statSync(dir).isDirectory()) out.push(dir)
+    }
+  }
+  return out.sort()
+}
+
 androidGradle.existingTests = async (ctx, opts) => {
   const testDirs = findFiles(ctx.dir, (n) => n === 'test', 4).filter(
     (d) => /\/src\/test$/.test(d) && statSync(d).isDirectory(),
   )
   if (!testDirs.length) return undefined
-  const tools = await androidTools(opts.config, opts.env)
+  const gradleVersion = gradleWrapperVersion(ctx.dir)
+  const tools = await androidTools(opts.config, opts.env, gradleVersion ? { gradleVersion } : {})
   if (!tools) return undefined
   const command = await gradleCommand(ctx.dir, tools.env)
   if (!command) return undefined
@@ -559,9 +605,7 @@ androidGradle.existingTests = async (ctx, opts) => {
     env: tools.env,
     timeoutMs: 30 * 60_000,
     summarize: (r) => {
-      const dirs = findFiles(ctx.dir, (n) => /^test.*UnitTest$/.test(n), 7).filter(
-        (d) => /\/build\/test-results\//.test(d) && statSync(d).isDirectory(),
-      )
+      const dirs = gradleUnitTestResultDirs(ctx.dir)
       const docs = dirs.flatMap((d) =>
         readdirSync(d)
           .filter((f) => f.endsWith('.xml'))

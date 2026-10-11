@@ -27,6 +27,14 @@ export async function launchChromium(): Promise<Browser> {
  * URL for a raw route id that may not be a screen (fallback tests). A literal hash or path is
  * used as is; a bare id follows the app's own route style (hash routes -> `#/<id>`, else `/<id>`).
  */
+/** Placeholder a behavior writes where a value must differ on every run (a sign-up email). */
+export const UNIQUE_PLACEHOLDER = '{{unique}}'
+
+/** A short token no earlier run produced: time in base 36 plus two random characters. */
+export function uniqueToken(): string {
+  return `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 4)}`
+}
+
 export function rawRouteUrl(baseUrl: string, spec: AppSpec, route: string): string {
   if (route.startsWith('#') || route.startsWith('/')) return routeUrl(baseUrl, { route } as Screen)
   const sample =
@@ -223,6 +231,10 @@ export async function executeBehavior(
   const context = await browser.newContext({ viewport: { width: 1280, height: 800 } })
   const page = await context.newPage()
   const screenOf = (id: string) => spec.screens.find((s) => s.id === id)
+  // `{{unique}}` in a typed or expected text becomes one fresh token for this flow run, so a flow
+  // can sign up and then sign in with an identity no earlier run has taken on a shared backend.
+  const unique = uniqueToken()
+  const fill = (text: string) => text.replaceAll(UNIQUE_PLACEHOLDER, unique)
   const deadline = new Promise<StepResult>((resolve) =>
     setTimeout(() => resolve({ ok: false, error: `timed out after ${timeoutMs} ms` }), timeoutMs),
   )
@@ -296,7 +308,7 @@ export async function executeBehavior(
           case 'tap':
           case 'doubleTap':
           case 'longPress': {
-            const loc = await need(page, spec, step.element, at, step.text)
+            const loc = await need(page, spec, step.element, at, step.text && fill(step.text))
             await robustClick(page, loc, {
               clickCount: step.op === 'doubleTap' ? 2 : 1,
               // A held click is the web's press-and-hold: mouse down, a pause, mouse up.
@@ -318,7 +330,7 @@ export async function executeBehavior(
             }
             // A trailing newline means "submit": fill the text, then press Enter (the way a user adds a todo).
             const submit = step.text.endsWith('\n')
-            const typed = submit ? step.text.replace(/\n$/, '') : step.text
+            const typed = fill(submit ? step.text.replace(/\n$/, '') : step.text)
             try {
               await loc.fill(typed, { timeout: 5000 })
             } catch {
@@ -360,27 +372,22 @@ export async function executeBehavior(
           }
           case 'expectText': {
             const loc = await need(page, spec, step.element, at)
+            const want = fill(step.text)
             const read = () => visibleText(loc)
             const ok = await poll(async () => {
               const text = (await read()).trim()
-              if (
-                step.exact
-                  ? text === step.text
-                  : text.toLowerCase().includes(step.text.toLowerCase())
-              )
+              if (step.exact ? text === want : text.toLowerCase().includes(want.toLowerCase()))
                 return true
               // Repeated elements (list rows): any one of them carrying the text satisfies the step,
               // the way the Maestro side matches a descendant.
-              const any = await resolveElement(page, spec, step.element, step.text)
+              const any = await resolveElement(page, spec, step.element, want)
               if (!any) return false
               const candidate = (await visibleText(any)).trim()
-              return step.exact ? candidate === step.text : true
+              return step.exact ? candidate === want : true
             })
             if (!ok) {
               const actual = await read().catch(() => '')
-              throw new Error(
-                `expected "${step.text}" on ${step.element}, saw "${actual.slice(0, 80)}"`,
-              )
+              throw new Error(`expected "${want}" on ${step.element}, saw "${actual.slice(0, 80)}"`)
             }
             break
           }

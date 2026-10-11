@@ -156,6 +156,17 @@ export class SqliteRunStore implements RunStore {
     return rows.map((r) => Event.parse(JSON.parse(r.json as string)))
   }
 
+  listAllEvents(runId: string, afterSeq = -1): Event[] {
+    const out: Event[] = []
+    let after = afterSeq
+    for (;;) {
+      const page = this.listEvents(runId, after, 5000)
+      out.push(...page)
+      if (page.length < 5000) return out
+      after = page[page.length - 1]!.seq
+    }
+  }
+
   addArtifact(artifact: Artifact): void {
     const a = Artifact.parse(artifact)
     this.db

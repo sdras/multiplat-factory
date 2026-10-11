@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import type { Artifact, PortPlan, Run, Stage } from '@mpf/core/schemas'
 
+const review = useProjectReview()
 const route = useRoute()
 const id = String(route.params.id)
 const api = useApi()
@@ -84,6 +85,12 @@ async function answer(choice: string) {
     </p>
 
     <template v-else>
+      <button class="btn review-page-action" @click="review.discuss('plan')">
+        Discuss this plan
+      </button>
+      <button class="btn review-page-action" @click="review.showDesign()">
+        Explore 3 design directions
+      </button>
       <section v-if="waiting" class="callout" style="margin-bottom: 16px">
         <div class="stack" style="gap: 1px; line-height: 1.35">
           <span class="head">Go or no go</span>
