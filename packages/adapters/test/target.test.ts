@@ -204,6 +204,27 @@ describe('compileMaestroFlow', () => {
     const source = compileMaestroFlow(spec, b, { ...opts, navigation: 'none', sourceHooks: [] })
     expect(source.unverifiable).toContain('rows carry no hook')
   })
+  it('dismisses the keyboard on Android only while an input method is on screen', () => {
+    const b: Behavior = {
+      id: 'B-016',
+      title: 'type',
+      screen: 'settings',
+      priority: 'must',
+      category: 'state',
+      evidence: [],
+      verifiedOnSource: false,
+      steps: [{ op: 'type', element: 'step-input', text: 'Buy milk\n' }],
+    }
+    const android = compileMaestroFlow(spec, b, { ...opts, platform: 'android' }).yaml
+    expect(android).toContain('- pressKey: Enter')
+    // Maestro's Android hideKeyboard is a BACK key: never send it into an app whose keyboard is closed.
+    expect(android).toContain(
+      '- runFlow:\n    when:\n      visible:\n        id: ".*inputmethod.*"\n    commands:\n      - hideKeyboard',
+    )
+    expect(android).not.toContain('- hideKeyboard:\n    optional: true')
+    const ios = compileMaestroFlow(spec, b, { ...opts, platform: 'ios' }).yaml
+    expect(ios).toContain('- hideKeyboard:\n    optional: true')
+  })
   it('maps doubleTap and longPress to the Maestro gestures, on a target and on a source app', () => {
     const b: Behavior = {
       id: 'B-014',
@@ -941,15 +962,22 @@ describe('qualified taps and restarts on a target app', () => {
     }
     const { yaml, unverifiable } = compileMaestroFlow(notes, b, opts)
     expect(unverifiable).toBeUndefined()
+    // The row's text is what the scroll looks for; the control is probed in every shape first.
     expect(yaml).toContain(
-      '- scrollUntilVisible:\n    element:\n      text: ".*First.*"\n    direction: DOWN\n    timeout: 4000\n    optional: true\n- runFlow:\n    when:\n      visible:\n        id: "note_row"\n        text: ".*First.*"\n    commands:\n      - tapOn:\n          id: "note_row"\n          text: ".*First.*"\n- runFlow:\n    when:\n      notVisible:\n        id: "note_row"\n        text: ".*First.*"\n    commands:\n      - runFlow:\n          when:\n            visible:\n              id: "note_row"\n              containsDescendants:\n                - text: ".*First.*"\n          commands:\n            - tapOn:\n                id: "note_row"\n                containsDescendants:\n                  - text: ".*First.*"\n',
-    )
-    // A leaf control beside the row's text (a Compose checkbox): nearest match left, then right.
-    expect(yaml).toContain(
-      '                  - tapOn:\n                      id: "note_row"\n                      leftOf:\n                        text: ".*First.*"\n',
+      '- scrollUntilVisible:\n    element:\n      text: ".*First.*"\n    direction: DOWN\n    timeout: 4000\n    optional: true\n- evalScript: ${output.mpfTap = \'\'}\n',
     )
     expect(yaml).toContain(
-      '                  - tapOn:\n                      id: "note_row"\n                      rightOf:\n                        text: ".*First.*"\n',
+      '- runFlow:\n    when:\n      true: "${output.mpfTap == \'\'}"\n      visible:\n        id: "note_row"\n        text: ".*First.*"\n    commands:\n      - evalScript: ${output.mpfTap = \'text\'}\n',
+    )
+    // Then exactly one tap runs, chosen by the probe: direct, descendant, nearest left, nearest right.
+    expect(yaml).toContain(
+      '- runFlow:\n    when:\n      true: "${output.mpfTap == \'descendant\'}"\n    commands:\n      - tapOn:\n          id: "note_row"\n          containsDescendants:\n            - text: ".*First.*"\n',
+    )
+    expect(yaml).toContain(
+      '      true: "${output.mpfTap == \'left\'}"\n    commands:\n      - tapOn:\n          id: "note_row"\n          leftOf:\n            text: ".*First.*"\n',
+    )
+    expect(yaml).toContain(
+      '      true: "${output.mpfTap == \'\'}"\n    commands:\n      - tapOn:\n          id: "note_row"\n          rightOf:\n            text: ".*First.*"\n',
     )
     const dotted: Behavior = {
       ...base,
@@ -978,7 +1006,7 @@ describe('qualified taps and restarts on a target app', () => {
     })
     expect(hooked.unverifiable).toBeUndefined()
     expect(hooked.yaml).toContain(
-      '            - tapOn:\n                id: "note_row"\n                containsDescendants:\n                  - text: ".*First.*"\n',
+      '      - tapOn:\n          id: "note_row"\n          containsDescendants:\n            - text: ".*First.*"\n',
     )
     const unhooked = compileMaestroFlow(notes, b, { ...src, sourceHooks: ['title-input'] })
     expect(unhooked.unverifiable).toBeUndefined()

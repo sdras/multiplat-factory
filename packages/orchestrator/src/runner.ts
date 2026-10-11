@@ -483,13 +483,19 @@ export class Orchestrator {
       )
     }
     if (next.status === 'succeeded' && run.options.until && stage.kind === run.options.until) {
-      this.log(
-        runId,
-        stage.id,
-        'info',
-        `stopped after "${stage.kind}" as requested; resume to continue`,
-      )
-      this.pause(runId, `stopped after ${stage.kind}`)
+      // A stop after the last stage is no stop at all: let the run settle to its real outcome.
+      const remaining = this.opts.store
+        .listStages(runId)
+        .some((s) => !['succeeded', 'skipped', 'cancelled', 'blocked'].includes(s.status))
+      if (remaining) {
+        this.log(
+          runId,
+          stage.id,
+          'info',
+          `stopped after "${stage.kind}" as requested; resume to continue`,
+        )
+        this.pause(runId, `stopped after ${stage.kind}`)
+      }
     }
   }
 

@@ -46,6 +46,7 @@ export const RUBRIC_TESTS = `## Test adequacy
 
 export const RUBRIC_PARITY_DOCS = `## Parity documentation
 - Intentional quirks reproduced from the source are listed with the reason.
+- PORT.md is written by the factory after this review from the worker's structured deviations and the test results; its absence from the workspace is expected and is not a finding. Judge parity documentation by the deviations the worker declared and by comments where behavior intentionally differs.
 - Every deviation is recorded with what changed and why; nothing silently differs.
 - Wire-format pins are stated where a future maintainer would look.`
 

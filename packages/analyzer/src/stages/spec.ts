@@ -3,7 +3,14 @@ import { join } from 'pathe'
 import { AppSpec, type Inventory, type MpfConfig } from '@mpf/core'
 import type { StageContext, StageOutcome, StageRunner } from '@mpf/harness'
 import { runAgent } from '@mpf/llm'
-import { SPEC_SYSTEM, specPrompt, testIdRepairPrompt, unmatchedTestIds } from '../prompts.ts'
+import {
+  SPEC_SYSTEM,
+  duplicateTestIdRepairPrompt,
+  duplicateTestIds,
+  specPrompt,
+  testIdRepairPrompt,
+  unmatchedTestIds,
+} from '../prompts.ts'
 import { runWorker, workerFailure, type AgentFn } from '../worker.ts'
 import type { DetectionArtifact } from './ingest.ts'
 
@@ -87,6 +94,44 @@ export function specStage(_config: MpfConfig, deps: AnalysisDeps = {}): StageRun
         ctx.log(
           unmatched.length ? 'warn' : 'info',
           `${unmatched.length} elements still have neither a source hook nor a sourceSelector after repair`,
+        )
+      }
+      // Two elements with one test id cannot be told apart by a flow: one repair round makes them distinct.
+      let duplicates = duplicateTestIds(spec)
+      if (duplicates.length && result.sessionId) {
+        ctx.log(
+          'warn',
+          `${duplicates.length} test id(s) are shared by several elements on one screen; asking the worker to make them distinct`,
+        )
+        const repair = await runWorker(
+          ctx,
+          {
+            role: 'generate',
+            budgetShare: 0.05,
+            cwd: sourceDir,
+            systemPrompt: SPEC_SYSTEM,
+            prompt: duplicateTestIdRepairPrompt(duplicates),
+            outputSchema: AppSpec,
+            maxTurns: 30,
+            resume: result.sessionId,
+          },
+          agent,
+        )
+        cost += repair.costUsd
+        if (repair.ok && repair.structured) {
+          const repaired = AppSpec.parse(repair.structured)
+          const still = duplicateTestIds(repaired)
+          if (
+            still.length <= duplicates.length &&
+            unmatchedTestIds(repaired, hooks).length <= unmatched.length
+          ) {
+            spec = repaired
+            duplicates = still
+          }
+        }
+        ctx.log(
+          duplicates.length ? 'warn' : 'info',
+          `${duplicates.length} shared test id(s) remain after repair`,
         )
       }
       writeFileSync(join(ctx.run.runDir, 'appspec.json'), JSON.stringify(spec, null, 2))

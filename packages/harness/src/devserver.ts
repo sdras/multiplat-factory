@@ -1,5 +1,14 @@
 import { createServer, type Server } from 'node:http'
-import { createReadStream, existsSync, statSync } from 'node:fs'
+import {
+  chmodSync,
+  createReadStream,
+  existsSync,
+  mkdirSync,
+  statSync,
+  writeFileSync,
+} from 'node:fs'
+import { tmpdir } from 'node:os'
+import { delimiter } from 'node:path'
 import { extname, join, normalize } from 'pathe'
 import { execa, type ResultPromise } from 'execa'
 
@@ -61,11 +70,42 @@ export interface StartDevServerOptions {
   onOutput?: (chunk: string) => void
 }
 
+/**
+ * A PATH entry whose `open` and `xdg-open` do nothing. Dev scripts often carry `--open` (webpack
+ * serve, vite --open), and an observation must never pop a browser window on the user's machine.
+ */
+export function noBrowserPath(): string | undefined {
+  if (process.platform === 'win32') return undefined
+  const dir = join(tmpdir(), 'mpf-no-open')
+  try {
+    mkdirSync(dir, { recursive: true })
+    for (const name of ['open', 'xdg-open']) {
+      const file = join(dir, name)
+      if (!existsSync(file)) {
+        writeFileSync(file, '#!/bin/sh\nexit 0\n')
+        chmodSync(file, 0o755)
+      }
+    }
+    return dir
+  } catch {
+    return undefined
+  }
+}
+
 /** Launch a framework dev server and wait until it serves. Kills the process on stop. */
 export async function startDevServer(opts: StartDevServerOptions): Promise<DevServerHandle> {
+  const shim = noBrowserPath()
+  const PATH = shim ? `${shim}${delimiter}${process.env.PATH ?? ''}` : process.env.PATH
   const child: ResultPromise = execa(opts.command, opts.args, {
     cwd: opts.cwd,
-    env: { ...process.env, ...opts.env, PORT: String(opts.port), BROWSER: 'none', CI: '1' },
+    env: {
+      ...process.env,
+      ...opts.env,
+      PATH,
+      PORT: String(opts.port),
+      BROWSER: 'none',
+      CI: '1',
+    },
     reject: false,
     cleanup: true,
     stdin: 'ignore',

@@ -319,10 +319,15 @@ enum LaunchValues {
 `
 
   files['AppTests/ScaffoldTests.swift'] = `import XCTest
+@testable import ${p.name}
 
+/// The factory's smoke test: the route table the router is built from is sound.
 final class ScaffoldTests: XCTestCase {
-    func testScaffoldBuildsAndTestsRun() {
-        XCTAssertEqual(2 + 2, 4)
+    func testRouteTableIsSound() {
+        XCTAssertFalse(Routes.all.isEmpty)
+        XCTAssertTrue(Routes.all.contains(Routes.root))
+        XCTAssertEqual(Set(Routes.all).count, Routes.all.count)
+        XCTAssertTrue(Routes.all.allSatisfy { !$0.isEmpty && $0 == $0.trimmingCharacters(in: .whitespaces) })
     }
 }
 `
@@ -335,6 +340,7 @@ final class ScaffoldTests: XCTestCase {
 - Every AppSpec element gets \`.accessibilityIdentifier("<testId>")\` on the view a user interacts with (the button, the text field, the text). Keep \`mpf-root\` on the root and \`screen-<id>\` (with \`.accessibilityElement(children: .contain)\`) on each screen container.
 - Every icon-only control (a \`Button\` whose label is only an \`Image(systemName:)\` or a glyph such as "+", a toolbar item or \`UIBarButtonItem\` with a system image) carries \`.accessibilityLabel("…")\` that says what it does ("Add item", "Increase count", "Close"); \`Label("Add item", systemImage: "plus").labelStyle(.iconOnly)\` keeps its title as that name. VoiceOver must announce the action, never "plus" or the symbol name. Controls with a visible text label need no extra label.
 - Controls repeated per row (a row's toggle, delete, or edit control) carry an \`.accessibilityLabel\` that includes the row's primary text (\`Delete Buy milk\`, not \`Delete\`), so VoiceOver and flows can tell one row's control from another's.
+- Tappable text (a filter pill, a "Clear completed" link, a title that navigates) is a \`Button\` or carries \`.accessibilityAddTraits(.isButton)\`, never a bare \`onTapGesture\`, so VoiceOver announces it as a control.
 - Persist state through \`App/Data/AppStore.swift\` using the source app's key names and JSON shapes exactly (wire-format pins from the AppSpec). Store JSON documents as strings.
 - Debug builds accept the \`${IOS_SEED_KEY}\` environment variable or launch argument (JSON object of key -> value) that replaces persisted state before the UI shows; do not remove it. A seed must be persisted before the first frame: \`AppStore.seed\` writes it synchronously and calls \`synchronize()\`, and \`applySeedIfPresent()\` runs in the app's \`init\`; keep both, because a flow may stop the app as soon as the root view is visible and read the stored state on relaunch.
 - Pure logic goes in \`App/Logic/\` as plain Swift with XCTest cases in \`AppTests/\`. UI state lives in \`@State\`/\`@Observable\` models, never in globals.

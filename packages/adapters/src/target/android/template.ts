@@ -336,6 +336,7 @@ ${screens.map((s) => `import ${p.packageName}.ui.screens.${s.className}Screen`).
 object Routes {
 ${screens.map((s) => `    const val ${constName(s.id)} = "${s.id}"`).join('\n')}
     const val ROOT = ${constName(root.id)}
+    val ALL: List<String> = listOf(${screens.map((s) => constName(s.id)).join(', ')})
 }
 
 @Composable
@@ -457,12 +458,18 @@ class AppStore private constructor(private val context: Context) {
   files[`app/src/test/kotlin/${pkgPath}/ScaffoldTest.kt`] = `package ${p.packageName}
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertTrue
 import org.junit.Test
+import ${p.packageName}.ui.Routes
 
+/** The factory's smoke test: the route table the navigation graph is built from is sound. */
 class ScaffoldTest {
     @Test
-    fun scaffoldBuildsAndTestsRun() {
-        assertEquals(4, 2 + 2)
+    fun routeTableIsSound() {
+        assertTrue(Routes.ALL.isNotEmpty())
+        assertTrue(Routes.ALL.contains(Routes.ROOT))
+        assertEquals(Routes.ALL.size, Routes.ALL.toSet().size)
+        assertTrue(Routes.ALL.all { it.isNotBlank() && it == it.trim() })
     }
 }
 `
@@ -476,6 +483,7 @@ class ScaffoldTest {
 - Every AppSpec element gets \`Modifier.testTag("<testId>")\` on the composable a user interacts with (the button, the text field, the text). \`AppRoot\` sets \`testTagsAsResourceId\`, so tags become resource ids for UI automation. Keep \`testTag("mpf-root")\` on the root and \`testTag("screen-<id>")\` on each screen container.
 - Every icon-only control (an \`IconButton\`, or a \`Button\` whose only child is an icon or a glyph such as "+") carries a human-readable \`contentDescription\` that says what it does ("Add item", "Increase count", "Close"): on the \`Icon\` (\`Icon(Icons.Default.Add, contentDescription = "Add item")\`) or, when a glyph \`Text\` stands in for the icon, on the control through \`Modifier.semantics { contentDescription = "Add item" }\`. A screen reader must announce the action, never "plus". Controls with a visible text label need no description; decorative images pass \`contentDescription = null\`.
 - Controls repeated per row (a row's toggle, delete, or edit control) carry a \`contentDescription\` that includes the row's primary text (\`Delete Buy milk\`, not \`Delete\`), so assistive technology and flows can tell one row's control from another's.
+- Tappable text (a filter pill, a "Clear completed" link, a title that navigates) is a \`TextButton\` or carries \`Modifier.clickable(role = Role.Button)\` (or \`Role.Tab\` for a filter), never a bare \`clickable\`, so TalkBack announces it as a control.
 - Persist state through \`data/AppStore.kt\` using the source app's key names and JSON shapes exactly (wire-format pins from the AppSpec). Store JSON documents as strings encoded with \`AppStore.json\`.
 - Debug builds accept an \`${SEED_EXTRA}\` intent extra (JSON object of key -> value) that replaces persisted state before the UI shows; do not remove it. A seed must be persisted before the first frame: \`MainActivity.onCreate\` calls \`AppStore.seedBlocking\` before \`setContent\`, and DataStore's \`edit\` returns only once the file is written (the equivalent of \`commit()\`, never \`apply()\`); keep it blocking and on the main thread, because a flow may stop the app as soon as the root is visible and read the stored state on relaunch.
 - Pure logic goes in \`logic/\` as plain Kotlin with JUnit tests in \`app/src/test\`. UI state lives in ViewModels or remembered state, never in singletons.

@@ -51,6 +51,32 @@ describe('server API', () => {
     expect(res.status).toBe(501)
   })
 
+  it('settles a run whose --until stage is the last one instead of pausing it', async () => {
+    const { app, store } = makeApp()
+    const created = await app.request('/api/v1/runs', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        source: { locator: './x' },
+        targets: ['web'],
+        options: {
+          fake: true,
+          coreMode: 'never',
+          until: 'report',
+          checkpoints: { planApproval: false, beforeFixLoop: false },
+        },
+      }),
+    })
+    expect(created.status).toBe(201)
+    const run = (await created.json()) as { id: string }
+    const settled = new Set(['succeeded', 'partial', 'failed', 'paused', 'cancelled'])
+    for (let i = 0; i < 1000 && !settled.has(store.getRun(run.id)?.status ?? ''); i++) {
+      await new Promise((r) => setTimeout(r, 10))
+    }
+    expect(store.getRun(run.id)?.status).toBe('succeeded')
+    expect(store.getStage(run.id, 'report')?.status).toBe('succeeded')
+  }, 30_000)
+
   it('creates a fake run, streams its events over SSE, and answers the plan checkpoint', async () => {
     const { app, store } = makeApp()
     const created = await app.request('/api/v1/runs', {

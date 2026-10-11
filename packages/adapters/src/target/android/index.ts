@@ -272,6 +272,7 @@ ${ctx.core ? `\n## Shared core\n${androidCoreConventions(ctx.core, project.packa
       try {
         const flow = compileMaestroFlow(ctx.spec, b, {
           appId: project.packageName,
+          platform: 'android',
           deepLinkBase: androidDeepLinkBase(project.packageName),
           seedArgument: SEED_EXTRA,
         })

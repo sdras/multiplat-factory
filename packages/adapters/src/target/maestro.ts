@@ -80,6 +80,24 @@ export function compileMaestroFlow(
           `${indent}  - text: ${yamlString(`.*${escapeRegex(text)}.*`)}`,
         ]),
   ]
+  /**
+   * Put the keyboard away after typing. On Android Maestro's hideKeyboard is an unconditional BACK
+   * key press, which leaves a single-activity app when the keyboard is already closed (an Enter
+   * that committed the field closes it), so it runs only while an input method is on screen. iOS
+   * often has no standard dismiss action (number pads have no Return key); a keyboard that stays
+   * up is not a failure there, the next tap or assertion decides.
+   */
+  const dismissKeyboard = (): string[] =>
+    opts.platform === 'android'
+      ? [
+          '- runFlow:',
+          '    when:',
+          '      visible:',
+          '        id: ".*inputmethod.*"',
+          '    commands:',
+          '      - hideKeyboard',
+        ]
+      : ['- hideKeyboard:', '    optional: true']
   /** Lists and forms scroll; bring the target on screen first (a no-op when it is already visible). */
   const reveal = (id: string, text?: string): string[] => [
     `- scrollUntilVisible:`,
@@ -100,68 +118,44 @@ export function compileMaestroFlow(
     if (text === undefined) return [...reveal(id), `- ${gesture}:`, `    id: ${yamlString(id)}`]
     const pattern = yamlString(`.*${escapeRegex(text)}.*`)
     const q = yamlString(id)
-    // Exclusive branches, nearest match first: the node that carries the text itself (iOS flattens
-    // a row's labels onto the row), the node with the text on a descendant (an Android row
-    // container), and last the control nearest to the text on its left or right (a Compose
-    // checkbox or delete button sits beside the row's label, not above it). The row's text is what
-    // has to be on screen, so the scroll looks for the text rather than the control.
-    return [
-      ...revealText(`.*${escapeRegex(text)}.*`),
+    // Probe first, act once. The shapes, nearest match first: the node that carries the text
+    // itself (iOS flattens a row's labels onto the row), the node with the text on a descendant (an
+    // Android row container), and the control nearest to the text on its left or right (a Compose
+    // checkbox or delete button sits beside the row's label). The probes run before any tap
+    // because a tap changes the screen (a double tap swaps a label for an editor), and a chain of
+    // "if visible then tap" branches evaluated in sequence would fire a second time afterwards.
+    const probe = (shape: string, selector: string[]): string[] => [
       `- runFlow:`,
       `    when:`,
+      `      true: "\${output.mpfTap == ''}"`,
       `      visible:`,
-      `        id: ${q}`,
-      `        text: ${pattern}`,
+      ...selector.map((l) => `        ${l}`),
+      `    commands:`,
+      `      - evalScript: \${output.mpfTap = '${shape}'}`,
+    ]
+    const act = (shape: string, selector: string[]): string[] => [
+      `- runFlow:`,
+      `    when:`,
+      `      true: "\${output.mpfTap == '${shape}'}"`,
       `    commands:`,
       `      - ${gesture}:`,
-      `          id: ${q}`,
-      `          text: ${pattern}`,
-      `- runFlow:`,
-      `    when:`,
-      `      notVisible:`,
-      `        id: ${q}`,
-      `        text: ${pattern}`,
-      `    commands:`,
-      `      - runFlow:`,
-      `          when:`,
-      `            visible:`,
-      `              id: ${q}`,
-      `              containsDescendants:`,
-      `                - text: ${pattern}`,
-      `          commands:`,
-      `            - ${gesture}:`,
-      `                id: ${q}`,
-      `                containsDescendants:`,
-      `                  - text: ${pattern}`,
-      `      - runFlow:`,
-      `          when:`,
-      `            notVisible:`,
-      `              id: ${q}`,
-      `              containsDescendants:`,
-      `                - text: ${pattern}`,
-      `          commands:`,
-      `            - runFlow:`,
-      `                when:`,
-      `                  visible:`,
-      `                    id: ${q}`,
-      `                    leftOf:`,
-      `                      text: ${pattern}`,
-      `                commands:`,
-      `                  - ${gesture}:`,
-      `                      id: ${q}`,
-      `                      leftOf:`,
-      `                        text: ${pattern}`,
-      `            - runFlow:`,
-      `                when:`,
-      `                  notVisible:`,
-      `                    id: ${q}`,
-      `                    leftOf:`,
-      `                      text: ${pattern}`,
-      `                commands:`,
-      `                  - ${gesture}:`,
-      `                      id: ${q}`,
-      `                      rightOf:`,
-      `                        text: ${pattern}`,
+      ...selector.map((l) => `          ${l}`),
+    ]
+    const direct = [`id: ${q}`, `text: ${pattern}`]
+    const descendant = [`id: ${q}`, `containsDescendants:`, `  - text: ${pattern}`]
+    const left = [`id: ${q}`, `leftOf:`, `  text: ${pattern}`]
+    const right = [`id: ${q}`, `rightOf:`, `  text: ${pattern}`]
+    return [
+      // The row's text is what has to be on screen; the scroll looks for it, not for the control.
+      ...revealText(`.*${escapeRegex(text)}.*`),
+      `- evalScript: \${output.mpfTap = ''}`,
+      ...probe('text', direct),
+      ...probe('descendant', descendant),
+      ...probe('left', left),
+      ...act('text', direct),
+      ...act('descendant', descendant),
+      ...act('left', left),
+      ...act('', right),
     ]
   }
   const byArgument = opts.navigation === 'launch-argument'
@@ -406,9 +400,7 @@ export function compileMaestroFlow(
         }
         lines.push('- eraseText')
         lines.push(...inputLines(step.text))
-        // iOS often has no standard dismiss action (number pads have no Return key); a keyboard
-        // that stays up is not a failure, the next tap or assertion decides.
-        lines.push('- hideKeyboard:', '    optional: true')
+        lines.push(...dismissKeyboard())
         break
       case 'select':
         if (sourceApp && !isHooked(step.element)) return unhooked(step.element)

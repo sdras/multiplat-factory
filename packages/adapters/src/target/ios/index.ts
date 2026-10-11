@@ -295,6 +295,7 @@ ${ctx.core ? `\n## Shared core\n${iosCoreConventions(ctx.core)}\n` : ''}`
       try {
         const flow = compileMaestroFlow(ctx.spec, b, {
           appId: project.bundleId,
+          platform: 'ios',
           deepLinkBase: `${IOS_DEEP_LINK_SCHEME}://${project.bundleId}`,
           seedArgument: IOS_SEED_KEY,
           navigation: 'launch-argument',

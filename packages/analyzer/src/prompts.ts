@@ -29,7 +29,7 @@ Rules:
 - Ids are B-001, B-002, … Every screen in the AppSpec gets at least one behavior. Aim for the smallest set that pins the app down: navigation, core state changes, validation, persistence across restart, and logic edge cases (limits, empty states). Size it to the app: roughly 3 to 5 behaviors per screen, merging closely related checks into one behavior with several steps rather than one behavior per assertion.
 - \`priority\` must is for behaviors a user would call broken if missing; should is for polish.
 - A behavior's \`screen\` is where its flow opens with a clean app, so its first step must touch an element of that screen; if the story starts elsewhere, set \`screen\` to that screen or begin with a \`navigate\` step.
-- Steps use only the typed operations. \`element\` and \`screen\` values must be ids that exist in the AppSpec; never invent new ones. To leave a screen the way a user would, tap its back, close, or save element explicitly; a bare \`navigate\` walks the AppSpec edges from wherever the previous steps left the user (the back edge when returning), which may not be the path you mean. Prefer expectText with exact:false. To tap one of several rows that share a hook (list rows, repeated cards), give \`tap\` a \`text\` and the flow taps the row whose visible text contains it; never write a custom step for a tap. When row ids are positional (\`note-row-0\`, \`note-row-1\`), the index already picks the row, so tap the index that holds the note at that moment (lists that sort newest first move rows) and do not add \`text\`. A \`type\` text that ends with a newline (\\n) is submitted with Enter after typing, which is how a field without a button commits (adding a todo, searching); never write a custom step to press Enter. Use \`restart\` to prove persistence. Use \`select\` to choose an option in a dropdown or picker (by value or visible label). Use \`doubleTap\` where the app reacts to a double click or double tap (an inline editor that opens on double click) and \`longPress\` for press-and-hold actions (context menus, multi-select); a single \`tap\` does not open those. Use \`swipe\` (element plus direction) for gestures such as swipe-to-delete or dismiss instead of inventing a tappable element for the revealed action; on web the port exposes the same action as a visible control. Use \`openRoute\` with a raw route id (for example "nope") to test what the app does with an unrecognized route; every port maps route ids the same way. Reach state through the UI (taps, typing, restarts) whenever it takes only a few steps; use \`seed\` only for state the UI cannot produce in a dozen steps (tapping increment three times beats seeding count 3): a seeded behavior cannot be verified on the original app, and a behavior verified on the original is worth far more to the port. Use \`custom\` only when no typed step can express the check.
+- Steps use only the typed operations. \`element\` and \`screen\` values must be ids that exist in the AppSpec; never invent new ones. To leave a screen the way a user would, tap its back, close, or save element explicitly; a bare \`navigate\` walks the AppSpec edges from wherever the previous steps left the user (the back edge when returning), which may not be the path you mean. Prefer expectText with exact:false. To tap one of several rows that share a hook (list rows, repeated cards), give \`tap\` a \`text\` and the flow taps the row whose visible text contains it; never write a custom step for a tap. When row ids are positional (\`note-row-0\`, \`note-row-1\`), the index already picks the row, so tap the index that holds the note at that moment (lists that sort newest first move rows) and do not add \`text\`. A \`type\` text that ends with a newline (\\n) is submitted with Enter after typing, which is how a field without a button commits (adding a todo, searching); never write a custom step to press Enter. To move focus off a field (blur), tap another element; that is a typed step, not a custom one. Use \`restart\` to prove persistence. Use \`select\` to choose an option in a dropdown or picker (by value or visible label). Use \`doubleTap\` where the app reacts to a double click or double tap (an inline editor that opens on double click) and \`longPress\` for press-and-hold actions (context menus, multi-select); a single \`tap\` does not open those. Use \`swipe\` (element plus direction) for gestures such as swipe-to-delete or dismiss instead of inventing a tappable element for the revealed action; on web the port exposes the same action as a visible control. Use \`openRoute\` with a raw route id (for example "nope") to test what the app does with an unrecognized route; every port maps route ids the same way. Reach state through the UI (taps, typing, restarts) whenever it takes only a few steps; use \`seed\` only for state the UI cannot produce in a dozen steps (tapping increment three times beats seeding count 3): a seeded behavior cannot be verified on the original app, and a behavior verified on the original is worth far more to the port. Use \`custom\` only when no typed step can express the check.
 - \`evidence\` cites file:line for the code that implements the behavior.
 - \`invariants\` records wire-format pins and intentional quirks that a port must keep even if they look odd.
 - \`seedData\` is a state snapshot a test can load before a behavior runs, keyed by persisted key names from the AppSpec.`
@@ -87,6 +87,33 @@ export function unmatchedTestIds(
       .filter((e) => !set.has(e.testId) && !e.sourceSelector?.trim())
       .map((e) => ({ screen: s.id, element: e.id, testId: e.testId })),
   )
+}
+
+/** Test ids that several elements of one screen share: a flow cannot tell those elements apart by id. */
+export function duplicateTestIds(
+  spec: AppSpec,
+): { screen: string; testId: string; elements: string[] }[] {
+  const out: { screen: string; testId: string; elements: string[] }[] = []
+  for (const s of spec.screens) {
+    const byId = new Map<string, string[]>()
+    for (const e of s.elements) byId.set(e.testId, [...(byId.get(e.testId) ?? []), e.id])
+    for (const [testId, elements] of byId)
+      if (elements.length > 1) out.push({ screen: s.id, testId, elements })
+  }
+  return out
+}
+
+export function duplicateTestIdRepairPrompt(
+  duplicates: { screen: string; testId: string; elements: string[] }[],
+): string {
+  return [
+    `${duplicates.length} test ids are shared by several elements on one screen. Flows and ports find an element by its testId, so two elements with one id cannot be told apart: a flow meant for an inline editor typed into the new-item field because both carried the source's one hook.`,
+    'For each group below give every element a distinct testId (the port adds them, so invent a precise one such as "todo-edit-input" beside "new-todo-input"); when the source reuses a single hook for those elements, keep that hook in a sourceSelector scoped by an ancestor so the original app can still be observed. Return the whole AppSpec.',
+    '',
+    ...duplicates.map(
+      (d) => `- screen ${d.screen}: testId "${d.testId}" on ${d.elements.join(', ')}`,
+    ),
+  ].join('\n')
 }
 
 export function testIdRepairPrompt(
