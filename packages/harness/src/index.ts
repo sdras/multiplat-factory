@@ -18,6 +18,7 @@ export type { CheckContext, CheckFn } from './toolchain/types.ts'
 export {
   gradleJdkRange,
   gradleWrapperVersion,
+  jdkFormulaFor,
   resolveAndroidHome,
   resolveJava,
   resolveJavaHome,

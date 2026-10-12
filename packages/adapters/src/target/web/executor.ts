@@ -146,7 +146,25 @@ export async function resolveAll(
     }
   }
   // A text qualifier on a leaf control (a row's checkbox or delete button) names the row, not the
-  // control: narrow the ancestor part of a descendant selector by the text, then descend again.
+  // control. The row is the tightest scope that carries the text, so it is tried first with the
+  // selector's own last segment: `ul.todo-list button.destroy` narrowed by the list would match the
+  // whole list's text and hand back its first button.
+  if (text !== undefined) {
+    const last = selector
+      ?.split(/\s+(?![^[]*\])/)
+      .filter(Boolean)
+      .at(-1)
+    for (const inner of [last ? page.locator(last) : undefined, ...candidates]) {
+      if (!inner) continue
+      const scoped = page.locator(ROW_SELECTOR, { hasText: text }).locator(inner)
+      try {
+        if ((await scoped.count()) > 0) return scoped
+      } catch {
+        /* try next */
+      }
+    }
+  }
+  // Then the ancestor part of a descendant selector, narrowed by the text.
   if (text !== undefined && selector) {
     const parts = selector.split(/\s+(?![^[]*\])/).filter(Boolean)
     for (let i = parts.length - 1; i >= 1; i--) {
@@ -160,21 +178,11 @@ export async function resolveAll(
       }
     }
   }
-  if (text !== undefined) {
-    // Hook-based leaf controls: the nearest list row or table row that carries the text.
-    for (const candidate of candidates) {
-      const scoped = page
-        .locator('li, tr, [role="listitem"], [role="row"], article', { hasText: text })
-        .locator(candidate)
-      try {
-        if ((await scoped.count()) > 0) return scoped
-      } catch {
-        /* try next */
-      }
-    }
-  }
   return undefined
 }
+
+/** What a repeated row looks like in markup, for scoping a leaf control by the row's text. */
+const ROW_SELECTOR = 'li, tr, [role="listitem"], [role="row"], article'
 
 function css(v: string): string {
   return v.replace(/["\\]/g, '\\$&')
@@ -216,6 +224,10 @@ export interface StepResult {
   unverifiable?: boolean
   /** Custom steps that were skipped; the typed steps around them still ran and passed. */
   notes?: string[]
+  /** What the page looked like at the failing step: the element's state and what covered it. */
+  evidence?: string[]
+  /** Files written for a failure (a screenshot), absolute paths. */
+  artifacts?: string[]
 }
 
 /** Run one behavior in a fresh browser context against the source app. */
@@ -227,6 +239,7 @@ export async function executeBehavior(
   screenshotPath: string | undefined,
   log: Log,
   timeoutMs = 45_000,
+  opts: { failureDir?: string } = {},
 ): Promise<StepResult> {
   const context = await browser.newContext({ viewport: { width: 1280, height: 800 } })
   const page = await context.newPage()
@@ -317,7 +330,7 @@ export async function executeBehavior(
             break
           }
           case 'type': {
-            const loc = await need(page, spec, step.element, at)
+            const loc = editableIn(await need(page, spec, step.element, at))
             const tag = await loc.evaluate((el) => el.tagName.toLowerCase()).catch(() => '')
             if (tag === 'select') {
               // A select takes a choice, not keystrokes: match by value first, then by visible label.
@@ -333,8 +346,16 @@ export async function executeBehavior(
             const typed = fill(submit ? step.text.replace(/\n$/, '') : step.text)
             try {
               await loc.fill(typed, { timeout: 5000 })
-            } catch {
-              await loc.click({ timeout: 3000 })
+            } catch (fillErr) {
+              // Say why the fill failed: the fallback click's timeout alone hides the real cause.
+              try {
+                await loc.click({ timeout: 3000 })
+              } catch (clickErr) {
+                throw new Error(
+                  `could not type into ${step.element}: fill: ${firstLine((fillErr as Error).message)}; click: ${firstLine((clickErr as Error).message)}`,
+                  { cause: clickErr },
+                )
+              }
               await page.keyboard.type(typed)
             }
             if (submit) await loc.press('Enter', { timeout: 3000 })
@@ -445,10 +466,13 @@ export async function executeBehavior(
             break
         }
       } catch (err) {
+        // The fix worker gets what a person would look at: the page and the element's state.
+        const failure = await failureEvidence(page, spec, step, behavior.id, i + 1, opts.failureDir)
         return {
           ok: false,
           error: `${at}: ${(err as Error).message.split('\n')[0]}`,
           notes: notes.length ? notes : undefined,
+          ...failure,
         }
       }
     }
@@ -517,12 +541,124 @@ async function robustClick(
   await click(3000, true)
 }
 
+/**
+ * The control to type into: the resolved element itself when it is one, else the first input,
+ * textarea, select, or contenteditable inside it. Ports often carry the test id on a field's
+ * wrapper (label, outlined box) rather than on the input, and filling a wrapper never works.
+ */
+function editableIn(loc: Locator): Locator {
+  return loc
+    .locator(
+      'xpath=self::input | self::textarea | self::select | self::*[@contenteditable="true"] | .//input | .//textarea | .//select | .//*[@contenteditable="true"]',
+    )
+    .first()
+}
+
+/**
+ * What the page looked like when a step failed: a screenshot, and for the step's element how many
+ * nodes matched, whether the first is visible and enabled, and what sits at its center (a scrim, a
+ * dialog, a sibling) when something else does. Mirrors the hierarchy summary mobile flows get.
+ */
+async function failureEvidence(
+  page: Page,
+  spec: AppSpec,
+  step: Behavior['steps'][number],
+  behaviorId: string,
+  stepNo: number,
+  failureDir: string | undefined,
+): Promise<{ evidence?: string[]; artifacts?: string[] }> {
+  const evidence: string[] = []
+  const artifacts: string[] = []
+  if (failureDir) {
+    try {
+      mkdirSync(failureDir, { recursive: true })
+      const file = join(failureDir, `${behaviorId}-step-${stepNo}.png`)
+      await page.screenshot({ path: file, timeout: 5000 })
+      artifacts.push(file)
+    } catch {
+      /* a screenshot is a bonus */
+    }
+  }
+  try {
+    evidence.push(`url: ${page.url()}`)
+    if ('element' in step) {
+      const all = await resolveAll(page, spec, step.element, 'text' in step ? step.text : undefined)
+      const count = all ? await all.count() : 0
+      if (!count) evidence.push(`${step.element}: no element on the page matches it`)
+      else {
+        const first = all!.first()
+        const state = await first.evaluate((el) => {
+          const h = el as {
+            getBoundingClientRect(): DOMRectLike
+            tagName: string
+            disabled?: boolean
+          }
+          const r = h.getBoundingClientRect()
+          const cx = r.x + r.width / 2
+          const cy = r.y + r.height / 2
+          const doc = (globalThis as unknown as { document: DocumentLike }).document
+          const top = doc.elementFromPoint(cx, cy)
+          const describe = (n: NodeLike | null) =>
+            n
+              ? `${n.tagName.toLowerCase()}${n.id ? `#${n.id}` : ''}${n.getAttribute('data-testid') ? `[data-testid=${n.getAttribute('data-testid')}]` : ''}${n.className && typeof n.className === 'string' ? `.${n.className.split(/\s+/).filter(Boolean).slice(0, 2).join('.')}` : ''}`
+              : 'nothing'
+          return {
+            tag: h.tagName.toLowerCase(),
+            box: `${Math.round(r.width)}x${Math.round(r.height)} at ${Math.round(r.x)},${Math.round(r.y)}`,
+            disabled: h.disabled === true,
+            covered:
+              top &&
+              top !== (el as unknown as NodeLike) &&
+              !(el as unknown as NodeLike).contains(top)
+                ? describe(top)
+                : '',
+          }
+        })
+        const visible = await first.isVisible().catch(() => false)
+        evidence.push(
+          `${step.element}: ${count} match(es); first is <${state.tag}> ${state.box}, ${visible ? 'visible' : 'not visible'}${state.disabled ? ', disabled' : ''}${state.covered ? `, covered by ${state.covered}` : ''}`,
+        )
+      }
+    }
+  } catch (err) {
+    evidence.push(`could not inspect the page: ${firstLine((err as Error).message)}`)
+  }
+  return {
+    ...(evidence.length ? { evidence } : {}),
+    ...(artifacts.length ? { artifacts } : {}),
+  }
+}
+
+/** The handful of DOM shapes the evidence code touches; this package compiles without the DOM lib. */
+interface DOMRectLike {
+  x: number
+  y: number
+  width: number
+  height: number
+}
+interface NodeLike {
+  tagName: string
+  id: string
+  className: unknown
+  getAttribute(name: string): string | null
+  contains(other: NodeLike | null): boolean
+}
+interface DocumentLike {
+  elementFromPoint(x: number, y: number): NodeLike | null
+}
+
+const firstLine = (m: string): string => m.split('\n')[0]?.slice(0, 160) ?? ''
+
 async function visibleText(loc: Locator): Promise<string> {
   const tag = await loc
     .evaluate((el) => el.tagName.toLowerCase(), undefined, { timeout: 2000 })
     .catch(() => '')
   if (tag === 'input' || tag === 'textarea' || tag === 'select')
     return loc.inputValue({ timeout: 2000 }).catch(() => '')
+  // A field whose test id sits on its wrapper: what the user reads there is the control's value.
+  const inner = loc.locator('input, textarea, select').first()
+  if ((await inner.count().catch(() => 0)) > 0)
+    return inner.inputValue({ timeout: 2000 }).catch(() => '')
   return loc.innerText({ timeout: 2000 }).catch(() => '')
 }
 

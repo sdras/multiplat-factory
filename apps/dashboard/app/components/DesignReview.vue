@@ -3,6 +3,7 @@ import type { ReviewEntry } from '@mpf/core/schemas'
 const review = useProjectReview()
 const dialog = ref<HTMLDialogElement>()
 const brief = ref('')
+const impeccable = ref<'yes' | 'no' | ''>('')
 const target = ref<'web' | 'ios' | 'android'>('web')
 const choosing = ref('')
 const requestId = ref(crypto.randomUUID())
@@ -20,12 +21,14 @@ onMounted(async () => {
   target.value = targets.value.includes('web') ? 'web' : (targets.value[0] ?? 'web')
 })
 async function generate() {
+  if (!impeccable.value) return
   try {
     await review.generateDesign(
       brief.value.trim() ||
         'Review this app and propose three distinct design directions. Preserve its functionality and adapt the layout to the selected platform.',
       target.value,
       requestId.value,
+      impeccable.value === 'yes',
     )
   } catch {
     /* shared error, same request id allows a safe retry */
@@ -34,6 +37,7 @@ async function generate() {
 function another() {
   review.designId.value = ''
   requestId.value = crypto.randomUUID()
+  impeccable.value = ''
 }
 async function choose(optionId: string) {
   if (!entry.value) return
@@ -75,8 +79,50 @@ function viewProposal() {
       <p v-if="review.error.value" class="review-error" role="alert">{{ review.error.value }}</p>
       <template v-if="entry">
         <p class="design-review-intro">{{ entry.text }}</p>
+        <fieldset
+          class="design-skill-choice"
+          :disabled="review.sending.value"
+          aria-describedby="impeccable-description"
+        >
+          <legend>Would you like to add Impeccable?</legend>
+          <p id="impeccable-description">
+            Impeccable is an optional design skill that guides layout, typography, color, and
+            accessibility. We’ll add it to Factory’s project files and use it for these mockups and
+            the version you build.
+          </p>
+          <a href="https://impeccable.style" target="_blank" rel="noopener noreferrer"
+            >About Impeccable ↗</a
+          >
+          <label for="impeccable-yes"
+            ><input
+              id="impeccable-yes"
+              v-model="impeccable"
+              name="impeccable"
+              type="radio"
+              value="yes"
+              required
+            /><span>Yes, add Impeccable</span></label
+          >
+          <label for="impeccable-no"
+            ><input
+              id="impeccable-no"
+              v-model="impeccable"
+              name="impeccable"
+              type="radio"
+              value="no"
+              required
+            /><span>No, continue without it</span></label
+          >
+        </fieldset>
         <p class="small muted">
           {{ entry.target }} · Concept previews, not working screens. Your app is unchanged.
+        </p>
+        <p v-if="entry.impeccable" class="small muted">
+          {{
+            entry.impeccableVersion
+              ? `Impeccable ${entry.impeccableVersion} added to this review and its selected revision.`
+              : 'Impeccable selected for this demo. No skill was downloaded.'
+          }}
         </p>
         <div class="design-options">
           <article
@@ -141,19 +187,62 @@ function viewProposal() {
           :disabled="review.sending.value"
           placeholder="Keep the colors and familiar controls. Make better use of desktop space."
         />
+        <fieldset
+          class="design-skill-choice"
+          :disabled="review.sending.value"
+          aria-describedby="impeccable-description"
+        >
+          <legend>Would you like to add Impeccable?</legend>
+          <p id="impeccable-description">
+            Impeccable is an optional design skill that guides layout, typography, color, and
+            accessibility. We’ll add it to Factory’s project files and use it for these mockups and
+            the version you build.
+          </p>
+          <a href="https://impeccable.style" target="_blank" rel="noopener noreferrer"
+            >About Impeccable ↗</a
+          >
+          <label for="impeccable-yes"
+            ><input
+              id="impeccable-yes"
+              v-model="impeccable"
+              name="impeccable"
+              type="radio"
+              value="yes"
+              required
+            /><span>Yes, add Impeccable</span></label
+          >
+          <label for="impeccable-no"
+            ><input
+              id="impeccable-no"
+              v-model="impeccable"
+              name="impeccable"
+              type="radio"
+              value="no"
+              required
+            /><span>No, continue without it</span></label
+          >
+        </fieldset>
         <p class="small muted">
           {{
             review.state.value?.run.options.fake
-              ? 'Demo mode: shows three example task-app layouts without calling a model.'
+              ? 'Demo mode: shows three example task-app layouts. No model calls or skill downloads.'
               : `Uses your configured model and up to ${money(review.state.value?.chatCapUsd ?? 0)} of this version’s budget.`
           }}
         </p>
         <button
           class="btn primary"
-          :disabled="review.sending.value || review.state.value?.busy || !targets.length"
+          :disabled="
+            review.sending.value || review.state.value?.busy || !targets.length || !impeccable
+          "
           type="submit"
         >
-          {{ review.sending.value ? 'Preparing three directions…' : 'Create 3 mockups' }}
+          {{
+            review.sending.value
+              ? impeccable === 'yes'
+                ? 'Adding Impeccable & preparing directions…'
+                : 'Preparing three directions…'
+              : 'Create 3 mockups'
+          }}
         </button>
         <p v-if="review.sending.value" role="status" class="muted">
           You can close this window. The options will appear in project chat when they’re ready.
@@ -284,8 +373,40 @@ function viewProposal() {
   border-radius: 8px;
   font: inherit;
 }
+.design-review-form select {
+  height: auto;
+  min-height: 44px;
+}
 .design-review-form .btn {
   margin-top: 10px;
+}
+.design-skill-choice {
+  margin: 24px 0;
+  padding: 16px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+.design-skill-choice legend {
+  font-weight: 600;
+  padding: 0 6px;
+  font-size: 14px;
+}
+.design-skill-choice p,
+.design-skill-choice a {
+  font-size: 12px;
+}
+.design-review-form .design-skill-choice label {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 12px 0 0;
+  min-height: 28px;
+  cursor: pointer;
+}
+.design-skill-choice input {
+  width: 16px;
+  height: 16px;
+  flex: 0 0 auto;
 }
 @media (max-width: 850px) {
   .design-options {

@@ -1,5 +1,5 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
-import { dirname, join } from 'pathe'
+import { dirname, join, relative } from 'pathe'
 import type { AppSpec, Diagnostic } from '@mpf/core'
 import { findFreePort, runProcess, startDevServer, which } from '@mpf/harness'
 import type {
@@ -261,6 +261,10 @@ ${ctx.core ? `\n## Shared core\n${webCoreConventions(ctx.core)}\n` : ''}`
       e2e: 'npm run preview   # then drive the flows in flows/ against the printed URL',
       product: 'dist',
       notes: [
+        'Host this app on Netlify. Sign in at https://app.netlify.com/ and upload the built dist/ folder to https://app.netlify.com/drop. This publishes the site. For later releases, upload the new dist/ to the existing project’s Deploys page to keep the same URL.',
+        'For a draft before publishing: install Netlify CLI, run `netlify login`, then `netlify deploy --dir=dist --no-build` from this web workspace. Test the draft URL; use `netlify deploy --dir=dist --no-build --prod` when ready. In a new version’s workspace, run `netlify link` first to select the existing project.',
+        'For Git hosting, import the generated web repository into Netlify. Build command: `npm run build`; publish directory: `dist`; base directory: this web workspace. The scaffold includes netlify.toml. Configure required build variables before building. Manual uploads need a local rebuild when variables change. Keep secret keys out of browser code.',
+        'Check API access, authentication callback URLs, saved data, mobile layouts, and your custom domain on the hosted version. Netlify static hosting does not provision a separate backend. Setup guide: https://docs.netlify.com/manage/projects/add-new-project/',
         `Vite + TypeScript${project.framework === 'react' ? ' + React' : project.framework === 'vue' ? ' + Vue 3' : project.framework === 'svelte' ? ' + Svelte 5' : ' (framework-free DOM code)'}; package \`${appId.value}\`${appId.file ? ` (from \`${appId.file}\`)` : ''}.`,
         'Every screen is a hash route named by its AppSpec id (`#/<screenId>`).',
         `Appending \`?${WEB_SEED_PARAM}=<json>\` seeds persisted state before the app starts; the end-to-end flows rely on it.`,
@@ -406,6 +410,8 @@ ${ctx.core ? `\n## Shared core\n${webCoreConventions(ctx.core)}\n` : ''}`
             b,
             join(shotsDir, 'behaviors', `${b.id}.png`),
             ctx.log,
+            undefined,
+            { failureDir: join(shotsDir, 'failures') },
           )
           cases.push({
             id: b.id,
@@ -413,7 +419,14 @@ ${ctx.core ? `\n## Shared core\n${webCoreConventions(ctx.core)}\n` : ''}`
             behaviorId: b.id,
             status: r.ok ? 'pass' : r.unverifiable ? 'skip' : 'fail',
             durationMs: Date.now() - t0,
-            message: [r.error, ...(r.notes ?? [])].filter(Boolean).join('\n') || undefined,
+            // Same shape as mobile flows: the state summary joins the message, `evidence` lists the
+            // files (a screenshot) the fix worker should open.
+            message:
+              [r.error, ...(r.evidence ?? []), ...(r.notes ?? [])].filter(Boolean).join('\n') ||
+              undefined,
+            evidence: r.artifacts?.length
+              ? r.artifacts.map((a) => relative(ctx.workspace, a))
+              : undefined,
             artifacts: [],
           })
           screenshots.push({ behaviorId: b.id, file: `screenshots/behaviors/${b.id}.png` })

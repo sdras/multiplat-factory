@@ -6,7 +6,11 @@ watch(
   () => route.fullPath,
   () => {
     const id = typeof route.params.id === 'string' ? route.params.id : ''
-    if (review.runId.value !== id) review.state.value = undefined
+    if (review.runId.value !== id) {
+      review.state.value = undefined
+      review.designOpen.value = false
+      review.designId.value = ''
+    }
     review.runId.value = id
     const last = route.path.split('/').pop()
     review.context.value = {
@@ -43,8 +47,16 @@ const runId = computed(() =>
       : undefined,
 )
 const section = computed(() =>
-  route.path === '/runs/new' ? 'new' : route.path.startsWith('/doctor') ? 'doctor' : 'runs',
+  route.path === '/runs/new' ? 'new' : route.path.endsWith('/doctor') ? 'doctor' : 'runs',
 )
+const doctorLink = computed(() => {
+  if (!runId.value) return '/doctor'
+  const last = route.path.split('/').pop()
+  return {
+    path: `/runs/${runId.value}/doctor`,
+    query: { returnTo: section.value === 'doctor' ? route.query.returnTo : last },
+  }
+})
 const runLinks = computed(() =>
   runId.value
     ? [
@@ -96,7 +108,7 @@ const detailHero = computed(() => {
       <nav v-if="!isBoard" class="nav" aria-label="Sections">
         <NuxtLink to="/" :class="{ on: section === 'runs' }">Runs</NuxtLink
         ><NuxtLink to="/runs/new" :class="{ on: section === 'new' }">New run</NuxtLink
-        ><NuxtLink to="/doctor" :class="{ on: section === 'doctor' }">Doctor</NuxtLink>
+        ><NuxtLink :to="doctorLink" :class="{ on: section === 'doctor' }">Doctor</NuxtLink>
       </nav>
       <div class="topbar-status">
         <span
@@ -131,7 +143,7 @@ const detailHero = computed(() => {
         >{{ label }}</NuxtLink
       >
       <NuxtLink
-        to="/doctor"
+        :to="doctorLink"
         :aria-current="section === 'doctor' ? 'page' : undefined"
         class="board-readiness"
         >Doctor</NuxtLink

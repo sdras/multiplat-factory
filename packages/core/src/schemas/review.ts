@@ -1,6 +1,6 @@
 import { z } from 'zod'
 import { Id, IsoDate, Target } from './common.ts'
-import { DesignOptions } from './design.ts'
+import { DesignOption, DesignOptions } from './design.ts'
 
 const Point = z.object({ x: z.number().min(0).max(1), y: z.number().min(0).max(1) })
 export const ReviewMark = z
@@ -25,6 +25,7 @@ export const ChatInput = z.object({
   text: z.string().trim().min(1).max(12000),
   context: ReviewContext.prefault({}),
   mode: z.enum(['chat', 'design']).default('chat'),
+  impeccable: z.boolean().default(false),
 })
 export const FeedbackInput = z.object({
   requestId: Id,
@@ -37,6 +38,7 @@ export const RevisionProposal = z.object({
   instructions: z.string().min(1).max(12000),
   kind: z.enum(['plan', 'revision']),
   targets: z.array(Target).min(1).max(3),
+  design: DesignOption.optional(),
 })
 export const ChatReply = z.object({
   text: z.string().min(1).max(20000),
@@ -86,6 +88,8 @@ export const ReviewEntry = z.discriminatedUnion('kind', [
     kind: z.literal('design'),
     text: z.string(),
     options: DesignOptions,
+    impeccable: z.boolean().default(false),
+    impeccableVersion: z.string().optional(),
     target: Target,
     requestId: Id,
     feedbackIds: z.array(Id).default([]),

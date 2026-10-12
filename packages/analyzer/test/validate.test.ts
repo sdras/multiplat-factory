@@ -155,6 +155,10 @@ describe('validateBehaviorRefs / prune', () => {
 describe('coreCandidacy', () => {
   it('enables a core for valuable pure logic and honors overrides', () => {
     expect(coreCandidacy(spec, 'auto').enabled).toBe(true)
+    // One target has nothing to share with; `always` still forces it.
+    expect(coreCandidacy(spec, 'auto', 1).enabled).toBe(false)
+    expect(coreCandidacy(spec, 'auto', 1).rationale).toMatch(/one target/)
+    expect(coreCandidacy(spec, 'always', 1).enabled).toBe(true)
     expect(coreCandidacy(spec, 'never').enabled).toBe(false)
     expect(coreCandidacy({ ...spec, logic: [] }, 'always').enabled).toBe(true)
     expect(

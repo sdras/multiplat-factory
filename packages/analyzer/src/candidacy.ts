@@ -15,7 +15,7 @@ const VALUABLE =
  * Deterministic first pass on whether a shared WASM core is worth it.
  * The plan stage may confirm or override with a rationale; `always`/`never` win.
  */
-export function coreCandidacy(spec: AppSpec, mode: CoreMode): Candidacy {
+export function coreCandidacy(spec: AppSpec, mode: CoreMode, targetCount = 2): Candidacy {
   const pure = spec.logic.filter((l) => l.purity === 'pure')
   const candidates = pure.filter((l) => l.coreCandidate)
   const pureLoc = candidates.reduce((n, l) => n + l.loc, 0)
@@ -27,6 +27,17 @@ export function coreCandidacy(spec: AppSpec, mode: CoreMode): Candidacy {
   const heuristic = pureLoc >= 150 || valuable.length > 0
   if (mode === 'never')
     return { enabled: false, score, pureLoc, rationale: 'disabled by run option', functions }
+  // A shared core pays for itself when two or more targets run the same binary; with one consumer
+  // it only adds a toolchain, a bridge, and an async init. The plan worker kept overriding the
+  // score on exactly this ground, which is a deterministic fact, not a judgement.
+  if (mode === 'auto' && targetCount < 2)
+    return {
+      enabled: false,
+      score,
+      pureLoc,
+      rationale: `one target requested: a shared core would have a single consumer (${pureLoc} pure lines noted for a later multi-target run)`,
+      functions,
+    }
   if (mode === 'always') {
     return {
       enabled: true,

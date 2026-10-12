@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import type { AppSpec } from '@mpf/core'
+import { behaviorsBudgetShare } from '../src/stages/behaviors.ts'
+import { specBudgetShare } from '../src/stages/spec.ts'
 import {
   duplicateTestIdRepairPrompt,
   duplicateTestIds,
@@ -71,5 +73,26 @@ describe('proseSelectors', () => {
     const prompt = proseSelectorRepairPrompt(proseSelectors(mobile, 'android'))
     expect(prompt).toContain('screen tasks, element filter-active')
     expect(prompt).toMatch(/exactly the text shown on screen or the content description/)
+  })
+})
+
+describe('specBudgetShare', () => {
+  it('grows with the inventory and caps at 35%', () => {
+    expect(specBudgetShare(40)).toBe(0.15)
+    expect(specBudgetShare(150)).toBe(0.15)
+    expect(specBudgetShare(250)).toBeCloseTo(0.25)
+    expect(specBudgetShare(551)).toBe(0.35)
+  })
+})
+
+describe('behaviorsBudgetShare', () => {
+  it('grows with the number of elements in the spec and caps at 35%', () => {
+    const withElements = (n: number) => ({
+      screens: [{ elements: Array.from({ length: n }, () => 0) }],
+    })
+    expect(behaviorsBudgetShare(withElements(20))).toBe(0.15)
+    expect(behaviorsBudgetShare(withElements(60))).toBe(0.15)
+    expect(behaviorsBudgetShare(withElements(100))).toBeCloseTo(0.25)
+    expect(behaviorsBudgetShare(withElements(400))).toBe(0.35)
   })
 })

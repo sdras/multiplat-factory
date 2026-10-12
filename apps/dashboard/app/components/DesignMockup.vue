@@ -127,14 +127,14 @@ const style = computed(() => {
   padding: 20px 12px;
   min-width: 0;
 }
-h4 {
+.design-mock h4 {
   font-family: inherit;
   font-size: 17px;
   line-height: 1.2;
   margin: 0 0 7px;
   overflow-wrap: anywhere;
 }
-p {
+.design-mock p {
   font-size: 9px;
   line-height: 1.5;
   margin: 0 0 12px;
@@ -209,7 +209,7 @@ p {
   border-radius: 0;
   border-bottom: 1px solid color-mix(in srgb, var(--mock-ink) 15%, transparent);
 }
-.mock-topbar h4 {
+.design-mock.mock-topbar h4 {
   font-size: 23px;
 }
 .mock-split .mock-body {
@@ -229,7 +229,7 @@ p {
 .mock-split .mock-content {
   padding: 16px 8px;
 }
-.mock-split h4 {
+.design-mock.mock-split h4 {
   font-size: 15px;
 }
 .mock-detail {
@@ -292,7 +292,7 @@ p {
   .mock-content {
     padding: 8px;
   }
-  h4 {
+  .design-mock h4 {
     font-size: 9px !important;
   }
   .mock-nav {

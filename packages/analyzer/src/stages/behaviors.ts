@@ -9,6 +9,12 @@ import { runWorker, workerFailure } from '../worker.ts'
 import type { AnalysisDeps } from './spec.ts'
 
 /** LLM worker writes the behavior contract; deterministic checks keep it tied to AppSpec ids. */
+/** Share of the run budget for the behaviors worker: 15% for a few screens, up to 35% for dozens of them. */
+export function behaviorsBudgetShare(spec: { screens: { elements: unknown[] }[] }): number {
+  const elements = spec.screens.reduce((n, s) => n + s.elements.length, 0)
+  return Math.min(0.35, 0.15 + Math.max(0, elements - 60) / 400)
+}
+
 export function behaviorsStage(_config: MpfConfig, deps: AnalysisDeps = {}): StageRunner {
   const agent = deps.agent ?? runAgent
   return {
@@ -28,22 +34,39 @@ export function behaviorsStage(_config: MpfConfig, deps: AnalysisDeps = {}): Sta
       }
       const sourceDir = join(ctx.run.runDir, 'source')
       let cost = 0
-      const first = await runWorker(
-        ctx,
-        {
-          role: 'generate',
-          budgetShare: 0.15,
-          cwd: sourceDir,
-          systemPrompt: BEHAVIORS_SYSTEM,
-          prompt: behaviorsPrompt(spec, inventory, ctx.takeInstructions()),
-          outputSchema: BehaviorSpec,
-          maxTurns: 60,
-        },
-        agent,
-      )
+      // A large spec (Apple's Food Truck: dozens of screens) makes every turn dear; the allowance
+      // grows with the spec and one continuation keeps a half-written BehaviorSpec from being lost.
+      const worker = {
+        role: 'generate' as const,
+        budgetShare: behaviorsBudgetShare(spec),
+        cwd: sourceDir,
+        systemPrompt: BEHAVIORS_SYSTEM,
+        prompt: behaviorsPrompt(spec, inventory, ctx.takeInstructions()),
+        outputSchema: BehaviorSpec,
+        maxTurns: 90,
+      }
+      let first = await runWorker(ctx, worker, agent)
+      if (!first.ok && /budget/i.test(first.error ?? '') && first.sessionId) {
+        ctx.log(
+          'warn',
+          'the behaviors worker ran out of its allowance; continuing the session once',
+        )
+        cost += first.costUsd
+        first = await runWorker(
+          ctx,
+          {
+            ...worker,
+            budgetShare: 0.15,
+            resume: first.sessionId,
+            prompt:
+              'Continue where you left off and return the complete BehaviorSpec now: keep every behavior you already wrote, cover the remaining must-have screens briefly, and stop reading files.',
+          },
+          agent,
+        )
+      }
       cost += first.costUsd
       if (!first.ok || !first.structured)
-        return workerFailure(first, 'worker produced no BehaviorSpec')
+        return { ...workerFailure(first, 'worker produced no BehaviorSpec'), costUsd: cost }
       let behaviors = BehaviorSpec.parse(first.structured)
       let errors = validateBehaviorRefs(spec, behaviors)
       if (errors.length && first.sessionId) {

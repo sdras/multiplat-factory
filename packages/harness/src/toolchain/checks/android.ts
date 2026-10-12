@@ -1,4 +1,5 @@
 import { existsSync, readFileSync, readdirSync } from 'node:fs'
+import { mpfHome } from '@mpf/core'
 import { homedir } from 'node:os'
 import { join } from 'pathe'
 import { tryOutput } from '../../exec.ts'
@@ -23,10 +24,18 @@ export async function findJavaCandidates(ctx: CheckContext): Promise<JavaCandida
   }
   add(toolchain.javaHome)
   add(env.JAVA_HOME)
+  // JDKs dropped under <MPF_HOME>/jdks (a tarball unpacked there needs no package manager and no
+  // sudo): either the unpacked folder itself or its macOS `Contents/Home`.
+  const dropped = join(mpfHome(env), 'jdks')
+  if (existsSync(dropped))
+    for (const d of readdirSync(dropped)) {
+      add(join(dropped, d, 'Contents', 'Home'))
+      add(join(dropped, d))
+    }
   if (platform === 'darwin') {
-    for (const v of ['21', '17', '11', '24', '23', '22', '17+'])
+    for (const v of ['21', '17', '11', '1.8', '24', '23', '22', '17+'])
       add(await tryOutput('/usr/libexec/java_home', ['-v', v], env))
-    for (const formula of ['openjdk@21', 'openjdk@17', 'openjdk@11', 'openjdk'])
+    for (const formula of ['openjdk@21', 'openjdk@17', 'openjdk@11', 'openjdk@8', 'openjdk'])
       add(await tryOutput('brew', ['--prefix', formula], env))
   }
   if (platform === 'linux') {
@@ -38,7 +47,8 @@ export async function findJavaCandidates(ctx: CheckContext): Promise<JavaCandida
   for (const home of homes) {
     const versionLine = await javaVersionLine(join(home, 'bin', 'java'), env)
     if (!versionLine) continue
-    const major = Number(/version "(\d+)/.exec(versionLine)?.[1] ?? 0)
+    // JDK 8 reports itself as "1.8.0_x"; everything after it as "17.0.x".
+    const major = Number(/version "(?:1\.)?(\d+)/.exec(versionLine)?.[1] ?? 0)
     out.push({ home, major, versionLine })
   }
   return out
@@ -220,6 +230,12 @@ export function gradleWrapperVersion(projectDir: string): string | undefined {
  * Gradle's compatibility table: 7.0-7.2 up to 16, 7.3 adds 17, 7.5 18, 7.6 19, 8.3 20, 8.5 21,
  * 8.8 22, 8.10 23, 8.14 24. AGP 8 (Gradle 8) needs 17 and AGP 7 needs 11 at the low end.
  */
+/** The Homebrew formula that provides a JDK inside the range, for the doctor's and the adapters' hints. */
+export function jdkFormulaFor(range: { min: number; max: number }): string {
+  const major = [21, 17, 11, 8].find((v) => v >= range.min && v <= range.max) ?? range.max
+  return `openjdk@${major}`
+}
+
 export function gradleJdkRange(gradleVersion: string): { min: number; max: number } {
   const [major = 0, minor = 0] = gradleVersion.split('.').map((n) => Number.parseInt(n, 10))
   const at = (m: number, n: number) => major > m || (major === m && minor >= n)
@@ -241,6 +257,21 @@ export function gradleJdkRange(gradleVersion: string): { min: number; max: numbe
                   ? 17
                   : at(7, 0)
                     ? 16
-                    : 15
-  return { min: major >= 8 ? 17 : 11, max }
+                    : at(6, 7)
+                      ? 15
+                      : at(6, 3)
+                        ? 14
+                        : at(6, 0)
+                          ? 13
+                          : at(5, 4)
+                            ? 12
+                            : at(5, 0)
+                              ? 11
+                              : at(4, 7)
+                                ? 10
+                                : at(4, 3)
+                                  ? 9
+                                  : 8
+  // AGP 8 (Gradle 8) needs 17, AGP 7 needs 11, and the Gradle 4/5/6 era built on 8.
+  return { min: major >= 8 ? 17 : major >= 7 ? 11 : 8, max }
 }

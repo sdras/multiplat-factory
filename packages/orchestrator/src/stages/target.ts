@@ -256,6 +256,26 @@ export function generateStage(config: MpfConfig, deps: TargetDeps = {}): StageRu
   }
 }
 
+/**
+ * Fix rounds already spent by earlier attempts of this stage: a pause or a crash mid-round requeues
+ * the stage, and its loop must not start over with a fresh allowance of rounds. Each round leaves a
+ * marker event behind, which is what gets counted.
+ */
+function spentFixRounds(ctx: StageContext, kind: 'build' | 'test'): number {
+  const marker = `${kind} fix round `
+  let spent = 0
+  for (const e of ctx.store.listAllEvents(ctx.run.id)) {
+    if (e.stageId !== ctx.stage.id || e.type !== 'log') continue
+    // A person's explicit rerun of the stage starts its rounds over; a requeue keeps them.
+    if (e.message === FIX_ROUNDS_RESET) spent = 0
+    else if (e.message.startsWith(marker) && / spent for /.test(e.message)) spent++
+  }
+  return spent
+}
+
+/** Logged on a stage by the orchestrator's rerun; everything spent before it no longer counts. */
+export const FIX_ROUNDS_RESET = 'fix rounds reset by an explicit rerun'
+
 /** Build the generated project; on failure, hand diagnostics back to the worker for a bounded number of rounds. */
 export function buildStage(config: MpfConfig, deps: TargetDeps = {}): StageRunner {
   const agent = deps.agent ?? runAgent
@@ -268,7 +288,7 @@ export function buildStage(config: MpfConfig, deps: TargetDeps = {}): StageRunne
       const lane = target === 'ios' ? 'xcodebuild' : target === 'android' ? 'gradle' : 'web'
       let cost = 0
       let sessionId = sessionOf(ctx, target)
-      for (let round = 0; round <= maxRounds; round++) {
+      for (let round = spentFixRounds(ctx, 'build'); round <= maxRounds; round++) {
         const result = await ctx.lanes.run(lane, () => adapter.build(tctx))
         if (!result.ok && !result.diagnostics.some((d) => d.severity === 'error')) {
           result.diagnostics.push({
@@ -346,6 +366,7 @@ export function buildStage(config: MpfConfig, deps: TargetDeps = {}): StageRunne
         )
         cost += fix.costUsd
         sessionId = fix.sessionId ?? sessionId
+        ctx.log('info', `build fix round ${round + 1}/${maxRounds} spent for ${target}`)
         if (!fix.ok) ctx.log('warn', `fix worker did not finish cleanly: ${fix.error}`)
       }
       return {
@@ -376,7 +397,7 @@ export function testStage(config: MpfConfig, deps: TargetDeps = {}): StageRunner
       let sessionId = sessionOf(ctx, target)
       const finish = (r: TestOutcome): TestResult => ({ ...r, stageId: ctx.stage.id, target })
 
-      for (let round = 0; round <= maxRounds; round++) {
+      for (let round = spentFixRounds(ctx, 'test'); round <= maxRounds; round++) {
         if (round > 0) {
           const rebuilt = await ctx.lanes.run(buildLane, () => adapter.build(tctx))
           ctx.emit({
@@ -422,6 +443,26 @@ export function testStage(config: MpfConfig, deps: TargetDeps = {}): StageRunner
           let flowsResult = finish(e2e.flows)
           results.push(launch)
           ctx.emit({ type: 'test.result', result: launch })
+          // A suite that produced no cases did not run: a Maestro or report failure, not a port
+          // defect. That is a stage failure to surface, never a pass and never a fix round.
+          if (
+            flowsResult.status === 'error' &&
+            flowsResult.cases.length === 0 &&
+            flows.some((f) => f.path)
+          ) {
+            results.push(flowsResult)
+            ctx.emit({ type: 'test.result', result: flowsResult })
+            return {
+              status: 'failed',
+              costUsd: 0,
+              retryable: true,
+              error: {
+                class: 'build-error',
+                message: `the ${target} end-to-end suite produced no results: the flow runner failed or timed out before its report was written`,
+                diagnostics: [],
+              },
+            }
+          }
           const mustFailed = flowsResult.cases.some(
             (c) =>
               c.status === 'fail' &&
@@ -550,6 +591,7 @@ export function testStage(config: MpfConfig, deps: TargetDeps = {}): StageRunner
         )
         cost += fix.costUsd
         sessionId = fix.sessionId ?? sessionId
+        ctx.log('info', `test fix round ${round + 1}/${maxRounds} spent for ${target}`)
       }
       return {
         status: 'failed',

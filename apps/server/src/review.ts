@@ -85,6 +85,7 @@ export function reviewRoutes(deps: ReviewDeps) {
         requestId: z.string().min(1),
         text: z.string().min(1),
         context: ReviewContext.optional(),
+        impeccable: z.boolean().default(false),
       })
       .parse(await c.req.json())
     return c.json(

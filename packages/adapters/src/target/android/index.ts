@@ -405,7 +405,9 @@ ${ctx.core ? `\n## Shared core\n${androidCoreConventions(ctx.core, project.packa
           ],
           cwd: ctx.workspace,
           env: maestro.env,
-          timeoutMs: 20 * 60_000,
+          // Maestro writes its report only at the end, so a batch cut off by a timeout reports nothing:
+          // give it three minutes a flow (a sign-up flow against a live API runs close to a minute).
+          timeoutMs: Math.max(20, 3 * runnable.length) * 60_000,
           signal: ctx.signal,
           onStdout: ctx.onOutput,
           onStderr: ctx.onOutput,

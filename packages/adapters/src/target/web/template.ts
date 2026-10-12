@@ -203,7 +203,10 @@ export default defineConfig({
 `
   files['vitest.config.ts'] = `export { default } from './vite.config'\n`
 
-  files['.gitignore'] = `node_modules/\ndist/\ntest-results/\n`
+  files['.gitignore'] =
+    `node_modules/\ndist/\ntest-results/\n.netlify/\n.env\n.env.*\n!.env.example\n`
+
+  files['netlify.toml'] = `[build]\n  command = "npm run build"\n  publish = "dist"\n`
 
   files['index.html'] = `<!doctype html>
 <html lang="en">

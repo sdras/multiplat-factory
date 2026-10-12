@@ -2,12 +2,12 @@ export function useDashboardStyle() {
   const style = useState<'flight' | 'board'>('dashboard-style', () => {
     if (import.meta.client) {
       try {
-        return localStorage.getItem('mpf.dashboard-style') === 'board' ? 'board' : 'flight'
+        return localStorage.getItem('mpf.dashboard-style') === 'flight' ? 'flight' : 'board'
       } catch {
         /* Storage may be unavailable. */
       }
     }
-    return 'flight'
+    return 'board'
   })
   function setStyle(value: string) {
     style.value = value === 'board' ? 'board' : 'flight'

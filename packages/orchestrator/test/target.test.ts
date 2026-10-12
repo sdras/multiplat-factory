@@ -7,7 +7,7 @@ import type { StageContext, StageRunnerRegistry } from '@mpf/harness'
 import type { BuildResult, E2eResult, TargetAdapter, TestOutcome } from '@mpf/adapters'
 import type { AgentFn } from '@mpf/analyzer'
 import { Orchestrator } from '../src/runner.ts'
-import { buildStage, generateStage, testStage } from '../src/stages/target.ts'
+import { FIX_ROUNDS_RESET, buildStage, generateStage, testStage } from '../src/stages/target.ts'
 
 const SPEC = {
   name: 'Counter',
@@ -201,7 +201,12 @@ const stubAgent: AgentFn = async () => ({
 
 async function runTargetStages(
   adapter: TargetAdapter,
-  opts: { agent?: AgentFn; beforeFixLoop?: boolean } = {},
+  opts: {
+    agent?: AgentFn
+    beforeFixLoop?: boolean
+    /** Runs after the run is created, before it starts: a place to seed events from an earlier attempt. */
+    before?: (store: SqliteRunStore, runId: string) => void
+  } = {},
 ) {
   const store = new SqliteRunStore(':memory:')
   const bus = new RunEventBus(store)
@@ -229,6 +234,7 @@ async function runTargetStages(
       checkpoints: { planApproval: false, beforeFixLoop: opts.beforeFixLoop ?? false },
     },
   })
+  opts.before?.(store, run.id)
   // pretend analysis already happened: succeed the analysis stages and drop in the artifacts
   for (const [name, data] of [
     ['appspec', SPEC],
@@ -291,6 +297,59 @@ describe('target stages', () => {
     expect(stages.get('build:android')?.status).toBe('succeeded')
     expect((stages.get('build:android')?.result as { rounds: number }).rounds).toBe(2)
     expect(adapter.calls.filter((c) => c === 'build')).toHaveLength(3)
+  })
+
+  it('does not grant fresh fix rounds to a stage that resumes after a pause', async () => {
+    const stubborn = fakeAdapter({ e2eFailRounds: 10 })
+    let fixWorkers = 0
+    const counting: AgentFn = async (o) => {
+      if (/fix round/i.test(o.prompt) || /failing/i.test(o.prompt)) fixWorkers++
+      return stubAgent(o)
+    }
+    const { stages } = await runTargetStages(stubborn, {
+      agent: counting,
+      before: (store, runId) => {
+        // Two rounds were spent by an earlier attempt of the same stage.
+        for (const n of [1, 2])
+          store.appendEvent({
+            runId,
+            stageId: 'test:android',
+            ts: new Date().toISOString(),
+            type: 'log',
+            level: 'info',
+            message: `test fix round ${n}/2 spent for android`,
+          } as never)
+      },
+    })
+    expect(stages.get('test:android')?.status).toBe('blocked')
+    expect(fixWorkers).toBe(0)
+  })
+
+  it('starts the fix rounds over after an explicit rerun of the stage', async () => {
+    const stubborn = fakeAdapter({ e2eFailRounds: 10 })
+    let fixWorkers = 0
+    const counting: AgentFn = async (o) => {
+      if (/fix round/i.test(o.prompt) || /failing/i.test(o.prompt)) fixWorkers++
+      return stubAgent(o)
+    }
+    await runTargetStages(stubborn, {
+      agent: counting,
+      before: (store, runId) => {
+        const log = (message: string) =>
+          store.appendEvent({
+            runId,
+            stageId: 'test:android',
+            ts: new Date().toISOString(),
+            type: 'log',
+            level: 'info',
+            message,
+          } as never)
+        log('test fix round 1/2 spent for android')
+        log('test fix round 2/2 spent for android')
+        log(FIX_ROUNDS_RESET)
+      },
+    })
+    expect(fixWorkers).toBe(2)
   })
 
   it('blocks the build after the fix budget is exhausted', async () => {

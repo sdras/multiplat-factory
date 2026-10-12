@@ -212,9 +212,12 @@ export function createReviewTools(deps: ReviewToolDeps): WebMCP.ModelContextTool
       text: str('Design brief: what to preserve and what to explore.'),
       target: choice(['web', 'ios', 'android'], 'Platform to design for.'),
       requestId: str('Stable unique request ID; reuse on retries.'),
+      impeccable: bool(
+        'Ask the user whether to add the Impeccable skill; true only for an explicit yes, false for no.',
+      ),
       confirmed: bool('True when the user approved generating mockups using the project budget.'),
     },
-    ['text', 'target', 'requestId', 'confirmed'],
+    ['text', 'target', 'requestId', 'confirmed', 'impeccable'],
     false,
     true,
     async (i, s) => {
@@ -222,6 +225,7 @@ export function createReviewTools(deps: ReviewToolDeps): WebMCP.ModelContextTool
         throw new Error('Ask the user before spending budget on design options.')
       const result = (await deps.call(`/runs/${id(i)}/review/designs`, s, {
         text: i.text,
+        impeccable: i.impeccable,
         requestId: i.requestId,
         context: { page: 'tests', target: i.target },
       })) as { entries: { id: string; kind: string; requestId?: string }[] }

@@ -54,7 +54,7 @@ export function planStage(config: MpfConfig, deps: PlanDeps = {}): StageRunner {
           },
         }
       }
-      const candidacy = coreCandidacy(spec, ctx.run.options.coreMode)
+      const candidacy = coreCandidacy(spec, ctx.run.options.coreMode, ctx.run.targets.length)
       let report: ToolchainReport | undefined
       try {
         report = await doctor(config)

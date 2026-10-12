@@ -1,4 +1,8 @@
+import { existsSync, mkdtempSync, readdirSync } from 'node:fs'
 import { createServer, type Server } from 'node:http'
+import { tmpdir } from 'node:os'
+import { join } from 'pathe'
+
 import type { AddressInfo } from 'node:net'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import type { Browser } from 'playwright'
@@ -60,6 +64,7 @@ const todoHtml = `<!doctype html>
         </ul>
       </main>
       <footer class="footer">
+        <label class="search" data-testid="search-field"><span>Search</span><input class="search-input" type="text"></label>
         <span class="todo-count"><strong>2</strong> items left</span>
         <ul class="filters">
           <li><a href="#/" class="selected">All</a></li>
@@ -107,6 +112,8 @@ const todoSpec: AppSpec = {
           testId: 'edit',
           sourceSelector: 'li.editing .edit',
         },
+        // The test id sits on the field's wrapper, not on the input itself.
+        { id: 'search', kind: 'input', label: 'Search', testId: 'search-field' },
         // A leaf control whose text lives on its row.
         {
           id: 'row-toggle',
@@ -424,6 +431,94 @@ describe.skipIf(!browser)('web executor', () => {
       () => {},
     )
     expect(r.ok, r.error).toBe(true)
+  }, 30_000)
+
+  it('scopes a leaf control by its row even when the selector skips the row element', async () => {
+    const skipping: AppSpec = {
+      ...todoSpec,
+      screens: [
+        {
+          ...todoSpec.screens[0]!,
+          elements: todoSpec.screens[0]!.elements.map((e) =>
+            e.id === 'destroy' ? { ...e, sourceSelector: 'ul.todo-list button.destroy' } : e,
+          ),
+        },
+      ],
+    }
+    const r = await executeBehavior(
+      browser!,
+      baseUrl,
+      skipping,
+      {
+        ...behavior([
+          { op: 'tap', element: 'destroy', text: 'Second todo' },
+          { op: 'expectCount', element: 'todo-label', count: 2 },
+          { op: 'expectText', element: 'todo-label', text: 'First todo', exact: true },
+          { op: 'expectText', element: 'todo-list', text: 'Third todo', exact: false },
+        ]),
+        screen: 'todos',
+      },
+      undefined,
+      () => {},
+    )
+    expect(r.ok, r.error).toBe(true)
+  }, 30_000)
+
+  it('types into the input inside a wrapper that carries the test id', async () => {
+    const r = await executeBehavior(
+      browser!,
+      baseUrl,
+      todoSpec,
+      {
+        ...behavior([
+          { op: 'type', element: 'search', text: 'milk' },
+          { op: 'expectText', element: 'search', text: 'milk', exact: true },
+        ]),
+        screen: 'todos',
+      },
+      undefined,
+      () => {},
+    )
+    expect(r.ok, r.error).toBe(true)
+  }, 30_000)
+
+  it('leaves a screenshot and an element summary behind when a step fails', async () => {
+    const failureDir = mkdtempSync(join(tmpdir(), 'mpf-failures-'))
+    const r = await executeBehavior(
+      browser!,
+      baseUrl,
+      todoSpec,
+      {
+        ...behavior([
+          { op: 'expectCount', element: 'todo-label', count: 3 },
+          { op: 'tap', element: 'todo-label', text: 'Nowhere todo' },
+        ]),
+        screen: 'todos',
+      },
+      undefined,
+      () => {},
+      45_000,
+      { failureDir },
+    )
+    expect(r.ok).toBe(false)
+    expect(r.evidence?.join('\n')).toMatch(/todo-label: no element on the page matches it/)
+    expect(r.artifacts?.[0]).toMatch(/B-\d+-step-2\.png$/)
+    expect(existsSync(r.artifacts![0]!)).toBe(true)
+    const shown = await executeBehavior(
+      browser!,
+      baseUrl,
+      todoSpec,
+      { ...behavior([{ op: 'expectHidden', element: 'new-todo' }]), screen: 'todos' },
+      undefined,
+      () => {},
+      45_000,
+      { failureDir },
+    )
+    expect(shown.ok).toBe(false)
+    expect(shown.evidence?.join('\n')).toMatch(
+      /new-todo: 1 match\(es\); first is <input> \d+x\d+ at \d+,\d+, visible/,
+    )
+    expect(readdirSync(failureDir).length).toBeGreaterThanOrEqual(2)
   }, 30_000)
 
   it('counts every element a repeated selector matches, not only the first', async () => {

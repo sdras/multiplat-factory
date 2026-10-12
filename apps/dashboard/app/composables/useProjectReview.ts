@@ -61,6 +61,7 @@ export function useProjectReview() {
     text: string,
     target: 'web' | 'ios' | 'android',
     requestId: string,
+    impeccable: boolean,
   ) {
     const id = runId.value
     if (pending.value[id]) return
@@ -69,6 +70,7 @@ export function useProjectReview() {
     try {
       const result = await api.post<ProjectReviewState>(`/runs/${id}/review/designs`, {
         requestId,
+        impeccable,
         text,
         context: { ...context.value, target },
       })

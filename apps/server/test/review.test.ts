@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import {
@@ -13,11 +13,16 @@ import {
 import { Orchestrator, ProjectReview, fakeRegistry, type ReviewDeps } from '@mpf/orchestrator'
 import { Hono } from 'hono'
 import { reviewRoutes } from '../src/review.ts'
+import {
+  installImpeccable,
+  impeccableDirectory,
+} from '../../../packages/orchestrator/src/impeccable.ts'
+import { demoDesignReply } from '../../../packages/orchestrator/src/design-review.ts'
 import { createReviewTools } from '../../dashboard/app/utils/reviewTools.ts'
 
 const cleanup: (() => void)[] = []
 afterEach(() => cleanup.splice(0).forEach((fn) => fn()))
-function fixture(agent?: ReviewDeps['agent']) {
+function fixture(agent?: ReviewDeps['agent'], installSkill?: ReviewDeps['installSkill']) {
   const dir = mkdtempSync(join(tmpdir(), 'mpf-review-test-'))
   const store = new SqliteRunStore(join(dir, 'store.sqlite'))
   const bus = new RunEventBus(store)
@@ -33,7 +38,7 @@ function fixture(agent?: ReviewDeps['agent']) {
     targets: ['web'],
     options: { fake: true, coreMode: 'never' },
   })
-  const deps = { store, bus, orchestrator, agent }
+  const deps = { store, bus, orchestrator, agent, installSkill }
   const review = new ProjectReview(deps)
   mkdirSync(join(run.runDir, 'source'), { recursive: true })
   writeFileSync(join(run.runDir, 'source', 'app.txt'), 'original source')
@@ -350,7 +355,7 @@ describe('three-option design review', () => {
       proposal: { targets: ['web'], title: design.options[1]!.name },
     })
     if (proposal?.kind !== 'proposal') throw new Error('Expected proposal')
-    expect(proposal.proposal.instructions).toContain('topbar')
+    expect(proposal.proposal.design?.mockup.layout).toBe('topbar')
     expect(proposal.proposal.instructions).not.toContain('sidebar')
     expect(f.store.listRuns()).toHaveLength(before)
     expect(await (await f.post(`designs/${design.id}/choose`, { optionId: 'b' })).json()).toEqual(
@@ -446,5 +451,137 @@ describe('three-option design review', () => {
       optionId: 'b',
     })
     expect(JSON.stringify(receipt).length).toBeLessThan(1500)
+  })
+})
+
+describe('optional Impeccable skill', () => {
+  function fakeInstall(runDir: string) {
+    const directory = impeccableDirectory(runDir)
+    mkdirSync(join(directory, 'reference'), { recursive: true })
+    writeFileSync(
+      join(directory, 'SKILL.md'),
+      '---\nname: impeccable\nversion: 4.5.2\n---\nDesign guidance',
+    )
+    for (const file of ['new-work.md', 'operate.md', 'craft-floor.md'])
+      writeFileSync(join(directory, 'reference', file), 'Design reference')
+    return { directory, version: '4.5.2' }
+  }
+  const agent = () =>
+    vi.fn(async () => ({
+      ok: true,
+      text: '',
+      structured: demoDesignReply(),
+      costUsd: 0.1,
+      numTurns: 1,
+      denials: 0,
+    }))
+  it('does nothing without opt-in and adds guidance only after yes', async () => {
+    const model = agent()
+    const installer = vi.fn(async (dir: string) => fakeInstall(dir))
+    const f = fixture(model, installer)
+    await f.post('designs', { requestId: 'no', text: 'Explore', impeccable: false })
+    expect(installer).not.toHaveBeenCalled()
+    const noCall = model.mock.calls[0] as unknown as [
+      Parameters<NonNullable<ReviewDeps['agent']>>[0],
+    ]
+    expect(noCall[0].systemPrompt).not.toContain('opted in to Impeccable')
+    expect(
+      (await f.post('designs', { requestId: 'yes', text: 'Explore', impeccable: true })).status,
+    ).toBe(200)
+    expect(installer).toHaveBeenCalledOnce()
+    const yesCall = model.mock.calls[1] as unknown as [
+      Parameters<NonNullable<ReviewDeps['agent']>>[0],
+    ]
+    expect(yesCall[0].systemPrompt).toContain(join(impeccableDirectory(f.run.runDir), 'SKILL.md'))
+    const design = f.review
+      .entries(f.run.id)
+      .find((e) => e.kind === 'design' && e.requestId === 'yes')!
+    expect(design).toMatchObject({ impeccable: true, impeccableVersion: '4.5.2' })
+    await f.orchestrator.start(f.run.id)
+    const chosen = f.review.chooseDesign(f.run.id, design.id, 'a')
+    const applied = f.review.apply(f.run.id, chosen.proposalId!, 10)
+    await f.orchestrator.start(applied.runId!)
+    const child = f.store.getRun(applied.runId!)!
+    expect(existsSync(join(child.runDir, 'source', '.mpf-review', 'impeccable', 'SKILL.md'))).toBe(
+      true,
+    )
+    expect(
+      child.options.revisionInstructions.some(
+        (i) => i.stageId === 'generate:web' && i.text.includes('Impeccable'),
+      ),
+    ).toBe(true)
+    expect(existsSync(join(f.run.runDir, 'source', '.claude'))).toBe(false)
+  })
+  it('stops before charging or calling the model if installation fails', async () => {
+    const model = agent()
+    const f = fixture(model, async () => {
+      throw new Error('Impeccable could not be installed')
+    })
+    const response = await f.post('designs', {
+      requestId: 'failure',
+      text: 'Explore',
+      impeccable: true,
+    })
+    expect(response.status).toBe(500)
+    expect(model).not.toHaveBeenCalled()
+    expect(f.store.getRun(f.run.id)?.costUsd).toBe(0)
+    expect(f.review.entries(f.run.id).some((e) => e.kind === 'design')).toBe(false)
+    expect(f.review.state(f.run.id).busy).toBe(false)
+  })
+  it('installs project-scoped without hooks, reuses the result, and honors cancellation', async () => {
+    const f = fixture()
+    const execute = vi.fn(async () => {
+      fakeInstall(f.run.runDir)
+      return {
+        command: '',
+        exitCode: 0,
+        stdout: '',
+        stderr: '',
+        durationMs: 1,
+        timedOut: false,
+        cancelled: false,
+      }
+    })
+    const signal = new AbortController().signal
+    expect((await installImpeccable(f.run.runDir, signal, execute)).version).toBe('4.5.2')
+    expect(execute).toHaveBeenCalledWith(
+      expect.objectContaining({
+        cwd: join(f.run.runDir, '.factory-skills', 'impeccable'),
+        args: [
+          '--yes',
+          'impeccable@4.5.2',
+          'install',
+          '--yes',
+          '--providers=claude',
+          '--scope=project',
+          '--no-hooks',
+        ],
+        signal,
+      }),
+    )
+    await installImpeccable(f.run.runDir, signal, execute)
+    expect(execute).toHaveBeenCalledOnce()
+    const aborted = new AbortController()
+    aborted.abort()
+    await expect(installImpeccable(f.run.runDir, aborted.signal, execute)).rejects.toThrow()
+  })
+  it('requires agents to supply the user’s skill choice and forwards it', async () => {
+    const call = vi.fn(async () => ({ entries: [{ kind: 'design', id: 'd', requestId: 'r' }] }))
+    const tool = createReviewTools({
+      currentRun: () => 'run',
+      call,
+      reveal: vi.fn(),
+      activity: vi.fn(),
+    }).find((t) => t.name === 'start_design_review')!
+    const input = { text: 'Explore', target: 'web', requestId: 'r', confirmed: true }
+    const signal = new AbortController().signal
+    expect(await tool.execute(input, { signal })).toHaveProperty('error')
+    expect(call).not.toHaveBeenCalled()
+    await tool.execute({ ...input, impeccable: true }, { signal })
+    expect(call).toHaveBeenCalledWith(
+      '/runs/run/review/designs',
+      signal,
+      expect.objectContaining({ impeccable: true }),
+    )
   })
 })

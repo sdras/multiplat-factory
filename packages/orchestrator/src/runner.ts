@@ -1,4 +1,5 @@
 import { createHash } from 'node:crypto'
+import { FIX_ROUNDS_RESET } from './stages/target.ts'
 import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs'
 import { join } from 'pathe'
 import {
@@ -302,6 +303,8 @@ export class Orchestrator {
       }
       this.opts.store.upsertStage(reset)
       this.emitStage(reset)
+      // A person asked for this stage again: its build and test fix rounds start over.
+      this.emit(runId, s.id, { type: 'log', level: 'info', message: FIX_ROUNDS_RESET })
     }
     this.emit(runId, stageId, { type: 'control', action: 'rerun', payload: {} })
     this.setRunStatus(runId, 'running')

@@ -7,6 +7,7 @@ import {
   derivedProductsDir,
   gradleJdkRange,
   gradleWrapperVersion,
+  jdkFormulaFor,
   runProcess,
   which,
   xcodeTools,
@@ -412,7 +413,7 @@ androidGradle.observeMobile = async (ctx, _detection, opts) => {
   if (gradleVersion) {
     const range = gradleJdkRange(gradleVersion)
     opts.log(
-      `source wrapper pins Gradle ${gradleVersion} (JDK ${range.min}-${range.max}); using JDK ${tools.javaMajor ?? '?'}${tools.javaInRange === false ? ` which it will refuse: install one in range (brew install openjdk@${range.max >= 17 ? 17 : 11})` : ''}`,
+      `source wrapper pins Gradle ${gradleVersion} (JDK ${range.min}-${range.max}); using JDK ${tools.javaMajor ?? '?'}${tools.javaInRange === false ? ` which it will refuse: install one in range (brew install ${jdkFormulaFor(range)})` : ''}`,
     )
   }
   const command = await gradleCommand(ctx.dir, tools.env)

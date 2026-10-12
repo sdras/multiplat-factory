@@ -5,6 +5,28 @@ const api = useApi()
 const { view, error, connected } = useRunView(id)
 const { isBoard } = useDashboardStyle()
 const target = ref('')
+const hosting = ref<'netlify' | 'other'>('netlify')
+const hostingKey = computed(() => `mpf.hosting.${view.value.run?.source.locator ?? id}`)
+watch(
+  hostingKey,
+  (key) => {
+    if (!import.meta.client) return
+    try {
+      hosting.value = localStorage.getItem(key) === 'other' ? 'other' : 'netlify'
+    } catch {
+      hosting.value = 'netlify'
+    }
+  },
+  { immediate: true },
+)
+function setHosting(value: 'netlify' | 'other') {
+  hosting.value = value
+  try {
+    localStorage.setItem(hostingKey.value, value)
+  } catch {
+    /* Still switch in memory. */
+  }
+}
 const checked = ref<Record<string, boolean>>({})
 const storageNotice = ref('')
 const review = useProjectReview()
@@ -151,8 +173,8 @@ const guides: Record<
     ],
   },
   web: {
-    title: 'Web deployment checklist',
-    url: 'https://vercel.com/docs/deployments/overview',
+    title: 'Netlify release checklist',
+    url: 'https://docs.netlify.com/manage/projects/add-new-project/',
     steps: [
       {
         id: 'review',
@@ -162,26 +184,58 @@ const guides: Record<
       },
       {
         id: 'config',
-        title: 'Set up your hosting environment',
+        title: 'Set up Netlify',
         description:
-          'Choose your host, configure the build command and output folder, and add the environment variables the app needs.',
+          'Sign in to Netlify and follow the setup guide below. Check any API connections and build variables your app needs.',
       },
       {
         id: 'preview',
         title: 'Deploy a preview and test it',
         description:
-          'Follow your host’s deployment steps. Verify links, authentication, API connections, and data storage on the hosted version.',
+          'Use the draft deployment instructions below to test a separate URL before publishing. Check links, sign-in, API connections, and saved data.',
       },
       {
         id: 'publish',
         title: 'Publish and check the live URL',
         description:
-          'Promote the verified preview, connect your domain if needed, and confirm HTTPS and the main user flows.',
+          'Publish to your Netlify project, check the live address, and connect your own domain if you have one.',
       },
     ],
   },
 }
-const guide = computed(() => guides[target.value])
+const otherHostingGuide = {
+  title: 'Web deployment checklist',
+  url: '',
+  steps: [
+    {
+      id: 'review',
+      title: 'Review the site in a browser',
+      description:
+        'Check the important flows, mobile layouts, accessibility, and any known differences.',
+    },
+    {
+      id: 'config',
+      title: 'Set up your hosting environment',
+      description:
+        'Choose your host, configure the build command and output folder, and add the environment variables the app needs.',
+    },
+    {
+      id: 'preview',
+      title: 'Deploy a preview and test it',
+      description:
+        'Follow your host’s deployment steps. Check links, sign-in, API connections, and saved data on the hosted version.',
+    },
+    {
+      id: 'publish',
+      title: 'Publish and check the live URL',
+      description:
+        'Publish the reviewed build, connect your domain if needed, and check HTTPS and the main user flows. Use the same site for future releases.',
+    },
+  ],
+}
+const guide = computed(() =>
+  target.value === 'web' && hosting.value === 'other' ? otherHostingGuide : guides[target.value],
+)
 const steps = computed(() => guide.value?.steps ?? [])
 const complete = computed(
   () => steps.value.filter((s) => checked.value[`${target.value}:${s.id}`]).length,
@@ -223,6 +277,9 @@ const artifactNames: Record<string, string> = {
   'run-report': 'Run report',
   'target-screenshot': 'Screenshot',
 }
+const webBuild = computed(() =>
+  artifacts.value.find((a) => a.kind === 'web-dist' && a.mime === 'inode/directory'),
+)
 const releaseFiles = computed(() => artifacts.value.filter((a) => a.kind in artifactNames))
 const otherFiles = computed(() => artifacts.value.filter((a) => !(a.kind in artifactNames)))
 const report = computed(() => artifacts.value.find((a) => a.kind === 'port-readme'))
@@ -273,6 +330,31 @@ const url = (a: Artifact) => `${api.base}/runs/${id}/artifacts/${a.id}/content`
         Some checks failed, were skipped, or need review. Read the test evidence and documented
         differences before publishing.
       </p>
+      <div v-if="target === 'web'" class="board-toolbar">
+        <div class="seg-group" role="group" aria-label="Web hosting guide">
+          <button
+            type="button"
+            class="seg"
+            :class="{ on: hosting === 'netlify' }"
+            :aria-pressed="hosting === 'netlify'"
+            @click="setHosting('netlify')"
+          >
+            Netlify setup
+          </button>
+          <button
+            type="button"
+            class="seg"
+            :class="{ on: hosting === 'other' }"
+            :aria-pressed="hosting === 'other'"
+            @click="setHosting('other')"
+          >
+            Other hosting
+          </button>
+        </div>
+        <span class="hint"
+          >Use Netlify or follow the regular checklist with your preferred host.</span
+        >
+      </div>
       <div class="board-columns">
         <section class="board-card">
           <div class="board-toolbar">
@@ -337,12 +419,12 @@ const url = (a: Artifact) => `${api.base}/runs/${id}/artifacts/${a.id}/content`
             Checking a step records your progress. Factory does not upload, publish, or verify store
             approval.
           </p>
-          <details class="board-details">
+          <details v-if="guide?.url" class="board-details">
             <summary>Official publishing instructions</summary>
             <a v-if="guide" :href="guide.url" target="_blank" rel="noopener" class="inline"
               >{{
                 target === 'web'
-                  ? 'Example hosting guide: Vercel'
+                  ? 'Netlify setup guide'
                   : target === 'ios'
                     ? 'Apple App Store Connect guide'
                     : 'Google Play release guide'
@@ -350,11 +432,17 @@ const url = (a: Artifact) => `${api.base}/runs/${id}/artifacts/${a.id}/content`
               ↗</a
             >
             <p v-if="target === 'web'" class="hint">
-              Use the equivalent steps for your preferred host.
+              Use the same Netlify project for future versions to keep your site address.
             </p>
           </details>
         </section>
         <aside class="board-aside">
+          <NetlifySetup
+            v-if="target === 'web' && hosting === 'netlify'"
+            :folder="webBuild ? `${view.run.runDir}/${webBuild.relPath}` : undefined"
+            :ready="build?.status === 'succeeded' && !!webBuild"
+            :demo="!!view.run.options.fake"
+          />
           <section class="board-card">
             <h2>Your release files</h2>
             <p class="hint">

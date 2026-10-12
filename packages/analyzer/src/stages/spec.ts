@@ -16,6 +16,11 @@ import {
 import { runWorker, workerFailure, type AgentFn } from '../worker.ts'
 import type { DetectionArtifact } from './ingest.ts'
 
+/** Share of the run budget for the spec worker: 15% for a small app, up to 35% for one with hundreds of files. */
+export function specBudgetShare(fileCount: number): number {
+  return Math.min(0.35, 0.15 + Math.max(0, fileCount - 150) / 1000)
+}
+
 export interface AnalysisDeps {
   agent?: AgentFn
 }
@@ -39,23 +44,42 @@ export function specStage(_config: MpfConfig, deps: AnalysisDeps = {}): StageRun
         }
       }
       const sourceDir = join(ctx.run.runDir, 'source')
-      const result = await runWorker(
-        ctx,
-        {
-          role: 'generate',
-          budgetShare: 0.15,
-          cwd: sourceDir,
-          systemPrompt: SPEC_SYSTEM,
-          prompt: specPrompt(detection.best, inventory, ctx.takeInstructions()),
-          outputSchema: AppSpec,
-          maxTurns: 80,
-        },
-        agent,
-      )
-      if (!result.ok || !result.structured)
-        return workerFailure(result, 'worker produced no AppSpec')
+      // A large source (Apple's Food Truck sample: 550 files) needs more reading than a counter app;
+      // the allowance grows with the inventory, and one continuation keeps a partial spec from
+      // being thrown away when the first session runs out mid-way.
+      const worker = {
+        role: 'generate' as const,
+        budgetShare: specBudgetShare(inventory.files.length),
+        cwd: sourceDir,
+        systemPrompt: SPEC_SYSTEM,
+        prompt: specPrompt(detection.best, inventory, ctx.takeInstructions()),
+        outputSchema: AppSpec,
+        maxTurns: 120,
+      }
+      let result = await runWorker(ctx, worker, agent)
+      // The run was charged for each session as it returned; the stage's own total is both.
+      let priorCost = 0
+      if (!result.ok && /budget/i.test(result.error ?? '') && result.sessionId) {
+        priorCost = result.costUsd
+        ctx.log('warn', 'the spec worker ran out of its allowance; continuing the session once')
+        result = await runWorker(
+          ctx,
+          {
+            ...worker,
+            budgetShare: 0.15,
+            resume: result.sessionId,
+            prompt:
+              'Continue where you left off and return the complete AppSpec now: keep every screen, element, and logic unit you already identified, finish the remaining screens from what you have read, and stop reading files unless a screen is still entirely unknown.',
+          },
+          agent,
+        )
+      }
+      if (!result.ok || !result.structured) {
+        const failure = workerFailure(result, 'worker produced no AppSpec')
+        return { ...failure, costUsd: priorCost + failure.costUsd }
+      }
       let spec = AppSpec.parse(result.structured)
-      let cost = result.costUsd
+      let cost = priorCost + result.costUsd
       // Ids that do not exist in the source verify nothing; give the worker one round to map them,
       // by hook or, where the source has none, by a sourceSelector.
       const hooks = inventory.hints.testHooks
