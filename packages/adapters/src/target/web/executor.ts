@@ -1,4 +1,5 @@
 import { mkdirSync } from 'node:fs'
+import { templatedIdPattern } from '../maestro.ts'
 import { startScreenOf } from '../start-screen.ts'
 import { join } from 'pathe'
 import type { Browser, Locator, Page } from 'playwright'
@@ -116,10 +117,13 @@ export async function resolveAll(
     candidates.push(page.locator(`[data-test="${css(el.testId)}"]`))
     candidates.push(page.locator(`#${css(el.testId)}`))
     candidates.push(page.locator(`[aria-label="${css(el.testId)}"]`))
-    // Repeated rows get templated ids in specs (`line-total-<SKU>`); match the literal prefix.
+    // Repeated rows get templated ids in specs (`line-total-<SKU>`). The placeholder stands for a
+    // value (digits, an uppercase token), never for lowercase words: `note-row-<arg>` covers
+    // `note-row-0` but not a sibling `note-row-swipe-delete`, which a bare prefix match counted as
+    // a row. `getByTestId` takes the pattern; `data-test` keeps the prefix form.
     const prefix = testIdPrefix(el.testId)
     if (prefix) {
-      candidates.push(page.locator(`[data-testid^="${css(prefix)}"]`))
+      candidates.push(page.getByTestId(templatedIdPattern(el.testId)))
       candidates.push(page.locator(`[data-test^="${css(prefix)}"]`))
     }
   }
@@ -436,25 +440,20 @@ export async function executeBehavior(
               loc ??= await resolveAll(page, spec, step.element)
               // A user counts what is on screen: rows a filter hides with `hidden` or CSS stay in
               // the DOM (Svelte's TodoMVC keeps every todo mounted) but are not there to count.
-              const matches = loc ? await loc.filter({ visible: true }).count() : 0
+              // A row whose wrapper and inner link both carry the id is one row, not two: count the
+              // outermost matches only. Siblings that really repeat still count twice.
+              const matches = loc
+                ? await loc
+                    .filter({ visible: true })
+                    .evaluateAll(outermostCount)
+                    .catch(() => 0)
+                : 0
               seen = matches
               if (matches === step.count) return true
               if (matches !== 1) return false
               const children = await loc!
                 .first()
-                .evaluate((el) => {
-                  // Structural types only: this package compiles without the DOM lib.
-                  const shown = (nodes: ArrayLike<unknown>) =>
-                    Array.from(nodes as ArrayLike<{ offsetParent: unknown }>).filter(
-                      (n) => n.offsetParent !== null,
-                    ).length
-                  const rows = el.querySelectorAll(
-                    ':scope > tbody > tr, :scope > tr, :scope > li, :scope > *',
-                  )
-                  const trs = el.querySelectorAll(':scope > tbody > tr, :scope > tr')
-                  const lis = el.querySelectorAll(':scope > li')
-                  return shown(trs) || shown(lis) || shown(rows)
-                })
+                .evaluate(visibleRowCount)
                 .catch(() => 0)
               seen = children
               return children === step.count
@@ -638,6 +637,45 @@ async function failureEvidence(
     ...(evidence.length ? { evidence } : {}),
     ...(artifacts.length ? { artifacts } : {}),
   }
+}
+
+/**
+ * Runs in the page (no inner functions, see `inspectElement`): how many of the matched elements
+ * are not inside another matched element.
+ */
+function outermostCount(els: unknown[]): number {
+  const nodes = els as NodeLike[]
+  let count = 0
+  for (let i = 0; i < nodes.length; i++) {
+    let nested = false
+    for (let j = 0; j < nodes.length; j++) {
+      if (i !== j && nodes[j]!.contains(nodes[i]!)) {
+        nested = true
+        break
+      }
+    }
+    if (!nested) count++
+  }
+  return count
+}
+
+/**
+ * Runs in the page (no inner functions): the visible rows of a container, as table rows, list
+ * items, or direct children, whichever form the container uses.
+ */
+function visibleRowCount(el: unknown): number {
+  const host = el as { querySelectorAll(sel: string): ArrayLike<{ offsetParent: unknown }> }
+  const groups = [
+    host.querySelectorAll(':scope > tbody > tr, :scope > tr'),
+    host.querySelectorAll(':scope > li'),
+    host.querySelectorAll(':scope > *'),
+  ]
+  for (let g = 0; g < groups.length; g++) {
+    let shown = 0
+    for (let i = 0; i < groups[g]!.length; i++) if (groups[g]![i]!.offsetParent !== null) shown++
+    if (shown) return shown
+  }
+  return 0
 }
 
 /**

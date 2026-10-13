@@ -67,6 +67,14 @@ const todoHtml = `<!doctype html>
       </main>
       <footer class="footer">
         <label class="search" data-testid="search-field"><span>Search</span><input class="search-input" type="text"></label>
+        <ul class="recent">
+          <li data-testid="recent-row"><a data-testid="recent-row" href="#/a">A</a></li>
+          <li data-testid="recent-row"><a data-testid="recent-row" href="#/b">B</a></li>
+        </ul>
+        <ul class="notes">
+          <li><a data-testid="note-row-0" href="#/n0">First</a><button data-testid="note-row-swipe-delete">Remove</button></li>
+          <li><a data-testid="note-row-1" href="#/n1">Second</a><button data-testid="note-row-swipe-delete-1">Remove</button></li>
+        </ul>
         <span class="todo-count"><strong>2</strong> items left</span>
         <ul class="filters">
           <li><a href="#/" class="selected">All</a></li>
@@ -116,6 +124,10 @@ const todoSpec: AppSpec = {
         },
         // The test id sits on the field's wrapper, not on the input itself.
         { id: 'search', kind: 'input', label: 'Search', testId: 'search-field' },
+        // A row whose wrapper and link both carry the id (two matches per row).
+        { id: 'recent', kind: 'list', label: 'Recent', testId: 'recent-row' },
+        // Templated row ids next to lowercase siblings that share the prefix.
+        { id: 'note-row', kind: 'link', label: 'Note row', testId: 'note-row-<index>' },
         // A leaf control whose text lives on its row.
         {
           id: 'row-toggle',
@@ -579,6 +591,47 @@ describe.skipIf(!browser)('web executor', () => {
       await page.close()
     }
   }, 30_000)
+
+  it('matches a templated row id by its placeholder shape, not by bare prefix', async () => {
+    const r = await executeBehavior(
+      browser!,
+      baseUrl,
+      todoSpec,
+      {
+        ...behavior([
+          { op: 'expectCount', element: 'note-row', count: 2 },
+          { op: 'tap', element: 'note-row', text: 'Second' },
+        ]),
+        screen: 'todos',
+      },
+      undefined,
+      () => {},
+    )
+    expect(r.ok, r.error).toBe(true)
+  }, 30_000)
+
+  it('counts a row once when its wrapper and inner link carry the same id', async () => {
+    const r = await executeBehavior(
+      browser!,
+      baseUrl,
+      todoSpec,
+      { ...behavior([{ op: 'expectCount', element: 'recent', count: 2 }]), screen: 'todos' },
+      undefined,
+      () => {},
+    )
+    expect(r.ok, r.error).toBe(true)
+    const wrong = await executeBehavior(
+      browser!,
+      baseUrl,
+      todoSpec,
+      { ...behavior([{ op: 'expectCount', element: 'recent', count: 4 }]), screen: 'todos' },
+      undefined,
+      () => {},
+      20_000,
+    )
+    expect(wrong.ok).toBe(false)
+    expect(wrong.error).toMatch(/expected 4 of recent, saw 2/)
+  }, 40_000)
 
   it('counts every element a repeated selector matches, not only the first', async () => {
     const r = await executeBehavior(

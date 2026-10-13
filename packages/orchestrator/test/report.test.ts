@@ -234,7 +234,7 @@ const critic: AgentFn = async (o) => {
 }
 
 /** Run the fake pipeline for android (available) and ios (no toolchain) through to the report stage. */
-async function runPipeline(android: TargetAdapter) {
+async function runPipeline(android: TargetAdapter, opts: { core?: boolean } = {}) {
   const ios: TargetAdapter = {
     ...android,
     id: 'fake-ios',
@@ -286,6 +286,44 @@ async function runPipeline(android: TargetAdapter) {
       mime: 'application/json',
       createdAt: 'x',
       meta: {},
+    })
+  }
+  if (opts.core) {
+    // A core built by an earlier stage: the module artifact plus the vector files the report reads.
+    mkdirSync(join(run.runDir, 'core/vectors'), { recursive: true })
+    writeFileSync(
+      join(run.runDir, 'core/vectors/total.json'),
+      JSON.stringify({
+        function: 'total',
+        vectors: [
+          { id: 'empty', input: {}, expected: 0, provenance: 'executed' },
+          { id: 'two-items', input: {}, expected: 3, provenance: 'executed' },
+          {
+            id: 'astral-cut',
+            input: {},
+            expected: 'xx',
+            provenance: 'derived',
+            note: 'Java keeps a lone surrogate; the core drops it',
+          },
+        ],
+      }),
+    )
+    writeFileSync(
+      join(run.runDir, 'core/vectors/normalize.json'),
+      JSON.stringify({
+        function: 'normalize',
+        vectors: [{ id: 'trim', input: {}, expected: 'a', provenance: 'derived' }],
+      }),
+    )
+    store.addArtifact({
+      id: 'wasm',
+      runId: run.id,
+      stageId: 'core.build',
+      kind: 'wasm-module',
+      relPath: 'core/target/wasm32-unknown-unknown/release/mpf_core.wasm',
+      mime: 'application/wasm',
+      createdAt: 'x',
+      meta: { bytes: 2048, functions: ['total', 'normalize'] },
     })
   }
   for (const s of store.listStages(run.id))
@@ -340,6 +378,19 @@ describe('report stage', () => {
       'android: 1/1 flows, 1/1 unit, critic pass 4.2/5; ios: skipped (ios toolchain unavailable: no Xcode on this host)',
     )
     expect(final.status).toBe('partial')
+  })
+
+  it('says how many vectors came from the source and lists the hand-written ones', async () => {
+    const { md } = await runPipeline(fakeAndroid(), { core: true })
+    expect(md).toContain('## Shared core')
+    expect(md).toContain(
+      'One WebAssembly module (`mpf_core.wasm`, 2.0 KiB) implements `total`, `normalize`',
+    )
+    expect(md).toContain(
+      "Vectors: 2 recorded from the source's own output (`executed`), 2 written by hand (`derived`).",
+    )
+    expect(md).toContain('- `total/astral-cut`: Java keeps a lone surrogate; the core drops it')
+    expect(md).toContain('- `normalize/trim`')
   })
 
   it('describes the shipped workspace, not the plan: ids from project files, files from the tree', async () => {

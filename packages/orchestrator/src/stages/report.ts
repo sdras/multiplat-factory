@@ -10,6 +10,7 @@ import type {
   TestResultTarget,
   Verdict,
 } from '@mpf/core'
+import { GoldenVectorSet } from '@mpf/core'
 import type { StageContext, StageOutcome, StageRunner } from '@mpf/harness'
 import {
   getTargetAdapter,
@@ -186,6 +187,40 @@ interface CoreSummary {
   bytes: number
   functions: string[]
   parity: { host: string; passed: number; total: number; failed: number }[]
+  /** Golden vectors by provenance, with the ones a worker pinned by hand instead of recording. */
+  vectors?: {
+    executed: number
+    derived: number
+    pinned: { fn: string; id: string; note?: string }[]
+  }
+}
+
+/** Read `core/vectors/*.json` from the run directory; absent or malformed files count for nothing. */
+function vectorProvenance(runDir: string): CoreSummary['vectors'] {
+  const dir = join(runDir, 'core', 'vectors')
+  if (!existsSync(dir)) return undefined
+  let executed = 0
+  let derived = 0
+  const pinned: { fn: string; id: string; note?: string }[] = []
+  for (const file of readdirSync(dir)
+    .filter((f) => f.endsWith('.json'))
+    .sort()) {
+    let parsed: ReturnType<typeof GoldenVectorSet.safeParse>
+    try {
+      parsed = GoldenVectorSet.safeParse(JSON.parse(readFileSync(join(dir, file), 'utf8')))
+    } catch {
+      continue
+    }
+    if (!parsed.success) continue
+    for (const v of parsed.data.vectors) {
+      if (v.provenance === 'executed') executed++
+      else {
+        derived++
+        pinned.push({ fn: parsed.data.function, id: v.id, ...(v.note ? { note: v.note } : {}) })
+      }
+    }
+  }
+  return { executed, derived, pinned }
 }
 
 /** The built core and its parity results from the core stages, if this run has one. */
@@ -216,7 +251,33 @@ function coreSummary(ctx: StageContext): CoreSummary | undefined {
     bytes: Number(wasm.meta.bytes ?? 0),
     functions: Array.isArray(wasm.meta.functions) ? (wasm.meta.functions as string[]) : [],
     parity,
+    vectors: vectorProvenance(ctx.run.runDir),
   }
+}
+
+const MAX_PINNED_LISTED = 15
+
+/** The vectors paragraph of the Shared core section: how many came from the source, which did not. */
+function vectorLines(v: CoreSummary['vectors']): string[] {
+  if (!v) return []
+  const lines = [
+    '',
+    `Vectors: ${v.executed} recorded from the source's own output (\`executed\`), ${v.derived} written by hand (\`derived\`).`,
+  ]
+  if (v.pinned.length) {
+    lines.push(
+      '',
+      "Hand-written vectors are expectations the worker chose, not the source's behavior; each is a place the core may differ from the original:",
+      '',
+      ...v.pinned
+        .slice(0, MAX_PINNED_LISTED)
+        .map((p) => `- \`${p.fn}/${p.id}\`${p.note ? `: ${p.note}` : ''}`),
+      ...(v.pinned.length > MAX_PINNED_LISTED
+        ? [`- and ${v.pinned.length - MAX_PINNED_LISTED} more in \`core/vectors/\``]
+        : []),
+    )
+  }
+  return lines
 }
 
 function outcomeFor(
@@ -488,6 +549,7 @@ function portMarkdown(input: {
               (t) =>
                 `| ${target} | ${t.summary.passed}/${t.summary.total}${t.summary.failed ? ` (${t.summary.failed} failing)` : ''} |`,
             ),
+          ...vectorLines(core.vectors),
         ]
       : [`- none (${plan.core.rationale})`]),
     '',

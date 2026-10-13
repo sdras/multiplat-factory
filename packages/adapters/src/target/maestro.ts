@@ -778,15 +778,20 @@ export function triggerElement(
 
 /** Does a testId match one of the hooks a source exposes? Placeholders (`<SKU>`, `\(row)`) match anything. */
 export function hookMatcher(hooks: string[]): (testId: string) => boolean {
-  // A placeholder stands for a value (an index, an id, a SKU: digits or an uppercase token) or another
-  // placeholder, never for lowercase words, so `note-row-<row>` covers `note-row-0` and `row-<id>` covers
-  // `row-MUG-01` but neither covers an invented `note-row-swipe-delete`.
-  const value = '(?:<[^>]*>|\\{[^}]*\\}|[A-Z0-9][\\w-]*)'
-  const patterns = hooks.map((h) => {
-    const parts = h.split(/[<{][^>}]*[>}]/g).map(escapeRegex)
-    return new RegExp(`^${parts.join(value)}$`)
-  })
+  const patterns = hooks.map(templatedIdPattern)
   return (testId) => patterns.some((re) => re.test(testId))
+}
+
+/**
+ * The ids a templated test id covers. A placeholder stands for a value (an index, an id, a SKU:
+ * digits or an uppercase token) or another placeholder, never for lowercase words, so
+ * `note-row-<row>` covers `note-row-0` and `row-<id>` covers `row-MUG-01` but neither covers an
+ * invented `note-row-swipe-delete`. An id without a placeholder matches itself only.
+ */
+export function templatedIdPattern(testId: string): RegExp {
+  const value = '(?:<[^>]*>|\\{[^}]*\\}|[A-Z0-9][\\w-]*)'
+  const parts = testId.split(/[<{][^>}]*[>}]/g).map(escapeRegex)
+  return new RegExp(`^${parts.join(value)}$`)
 }
 
 /** Shortest hop list (from, to, trigger) between two screens over the AppSpec edges. */
