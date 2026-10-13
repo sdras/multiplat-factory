@@ -35,3 +35,4 @@ export {
   coreVectorsStage,
   type CoreDeps,
 } from './stages.ts'
+export { sourceToolEnv, type SourceToolEnv } from './source-tools.ts'

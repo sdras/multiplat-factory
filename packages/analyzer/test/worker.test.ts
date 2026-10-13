@@ -139,3 +139,13 @@ describe('WRITE_BASH', () => {
     expect(allowed('mv -- -weird x')).toBe(false)
   })
 })
+
+describe('WRITE_BASH', () => {
+  it('admits rmdir and in-place sed on relative paths only', () => {
+    const ok = (cmd: string) => WRITE_BASH.some((re) => re.test(cmd))
+    expect(ok('rmdir mpf-harness/bodies')).toBe(true)
+    expect(ok('rmdir /tmp/x')).toBe(false)
+    expect(ok("sed -i '' 's|a|b|' src/api/mod.rs")).toBe(true)
+    expect(ok('rm -rf /')).toBe(false)
+  })
+})

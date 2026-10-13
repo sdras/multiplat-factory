@@ -264,3 +264,16 @@ describe('embedding the core in target scaffolds', () => {
     expect(without).not.toContain('WasmKit')
   })
 })
+
+describe('logicRunnerAllow for Objective-C', () => {
+  it('admits clang through xcrun or bare, but not clang++ or clang-format', () => {
+    const allowed = (cmd: string) => logicRunnerAllow('ios').some((re) => re.test(cmd))
+    expect(
+      allowed('xcrun clang -fobjc-arc -framework Foundation mpf-harness/*.m -o mpf-harness/run'),
+    ).toBe(true)
+    expect(allowed('clang -fobjc-arc main.m')).toBe(true)
+    expect(allowed('clang++ main.mm')).toBe(false)
+    expect(allowed('clang-format -i main.m')).toBe(false)
+    expect(allowed('./mpf-harness/run')).toBe(true)
+  })
+})

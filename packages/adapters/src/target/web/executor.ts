@@ -1,4 +1,5 @@
 import { mkdirSync } from 'node:fs'
+import { startScreenOf } from '../start-screen.ts'
 import { join } from 'pathe'
 import type { Browser, Locator, Page } from 'playwright'
 import type { AppSpec, Behavior, Element, Screen } from '@mpf/core'
@@ -77,10 +78,10 @@ const ROLE_BY_KIND: Record<Element['kind'], string | undefined> = {
 }
 
 /**
- * Find an AppSpec element on the page, most specific strategy first: the spec's own mapping onto
- * the original app's markup (`sourceSelector`, all a hookless source has), then the test hooks,
- * then the accessible name. With `text`, only candidates whose text content contains it count:
- * rows of a list share one test id, and the step names the row by what it shows.
+ * Find an AppSpec element on the page, most specific strategy first: the test hooks, then the
+ * spec's own mapping onto the original app's markup (`sourceSelector`, all a hookless web source
+ * has), then the accessible name. With `text`, only candidates whose text content contains it
+ * count: rows of a list share one test id, and the step names the row by what it shows.
  */
 export async function resolveElement(
   page: Page,
@@ -103,8 +104,9 @@ export async function resolveAll(
   const el = all.find((e) => e.id === elementId)
   if (!el) return undefined
   const candidates: Locator[] = []
-  const selector = el.sourceSelector?.trim()
-  if (selector) candidates.push(page.locator(selector))
+  // A mobile source's `sourceSelector` is the caption or content description its observe flows
+  // match on the source app, never CSS: "Title" as a selector lands on the document's <title>.
+  const selector = spec.source.platform === 'web' ? el.sourceSelector?.trim() : undefined
   // A hook the source reuses for several controls (TodoMVC React's `text-input` on both the new-todo
   // field and the inline editor) cannot identify one of them: when the spec scoped the element with
   // a selector, that selector is the only way to it, and a miss means the element is not there.
@@ -121,6 +123,8 @@ export async function resolveAll(
       candidates.push(page.locator(`[data-test^="${css(prefix)}"]`))
     }
   }
+  // Scoped to the body, so a type selector such as `title` cannot match inside <head>.
+  if (selector) candidates.push(page.locator('body').locator(selector))
   const role = ROLE_BY_KIND[el.kind]
   if (el.label) {
     const loose = looseText(el.label)
@@ -243,6 +247,12 @@ export async function executeBehavior(
 ): Promise<StepResult> {
   const context = await browser.newContext({ viewport: { width: 1280, height: 800 } })
   const page = await context.newPage()
+  // What a person would check first when a step fails: the browser's own errors.
+  const browserErrors: string[] = []
+  page.on('pageerror', (e) => browserErrors.push(`page error: ${firstLine(e.message)}`))
+  page.on('console', (m) => {
+    if (m.type() === 'error') browserErrors.push(`console error: ${firstLine(m.text())}`)
+  })
   const screenOf = (id: string) => spec.screens.find((s) => s.id === id)
   // `{{unique}}` in a typed or expected text becomes one fresh token for this flow run, so a flow
   // can sign up and then sign in with an identity no earlier run has taken on a shared backend.
@@ -288,13 +298,18 @@ export async function executeBehavior(
       navigated = true
     }
     const first = behavior.steps[0]?.op
+    const { screen: start, corrected } = startScreenOf(spec, behavior)
+    if (corrected)
+      log(
+        `${behavior.id}: opens on ${start}; the behavior says ${corrected}, but its first step belongs there`,
+      )
     if (first !== 'navigate' && first !== 'openRoute' && first !== 'seed') {
       try {
-        await goto(behavior.screen)
+        await goto(start)
       } catch (err) {
         return {
           ok: false,
-          error: `opening screen "${behavior.screen}": ${(err as Error).message}`,
+          error: `opening screen "${start}": ${(err as Error).message}`,
         }
       }
     }
@@ -310,7 +325,7 @@ export async function executeBehavior(
             navigated = true
             break
           case 'seed': {
-            if (!navigated) await goto(behavior.screen)
+            if (!navigated) await goto(start)
             await page.evaluate((state: Record<string, unknown>) => {
               for (const [k, v] of Object.entries(state))
                 localStorage.setItem(k, typeof v === 'string' ? v : JSON.stringify(v))
@@ -467,7 +482,13 @@ export async function executeBehavior(
         }
       } catch (err) {
         // The fix worker gets what a person would look at: the page and the element's state.
-        const failure = await failureEvidence(page, spec, step, behavior.id, i + 1, opts.failureDir)
+        const failure = await failureEvidence(page, spec, {
+          element: 'element' in step ? step.element : undefined,
+          qualifier: step.op === 'tap' && step.text ? fill(step.text) : undefined,
+          file: `${behavior.id}-step-${i + 1}.png`,
+          failureDir: opts.failureDir,
+          browserErrors,
+        })
         return {
           ok: false,
           error: `${at}: ${(err as Error).message.split('\n')[0]}`,
@@ -555,24 +576,29 @@ function editableIn(loc: Locator): Locator {
 }
 
 /**
- * What the page looked like when a step failed: a screenshot, and for the step's element how many
- * nodes matched, whether the first is visible and enabled, and what sits at its center (a scrim, a
- * dialog, a sibling) when something else does. Mirrors the hierarchy summary mobile flows get.
+ * What the page looked like when a step failed: a screenshot, the browser's own errors, and for
+ * the step's element how many nodes matched, whether the first is visible, enabled, and editable,
+ * what sits at its center when something covers it, and whether the node was replaced between two
+ * looks (a screen that re-renders on every tick defeats every fill and click). Mirrors the
+ * hierarchy summary mobile flows get.
  */
 async function failureEvidence(
   page: Page,
   spec: AppSpec,
-  step: Behavior['steps'][number],
-  behaviorId: string,
-  stepNo: number,
-  failureDir: string | undefined,
+  f: {
+    element: string | undefined
+    qualifier: string | undefined
+    file: string
+    failureDir: string | undefined
+    browserErrors: string[]
+  },
 ): Promise<{ evidence?: string[]; artifacts?: string[] }> {
   const evidence: string[] = []
   const artifacts: string[] = []
-  if (failureDir) {
+  if (f.failureDir) {
     try {
-      mkdirSync(failureDir, { recursive: true })
-      const file = join(failureDir, `${behaviorId}-step-${stepNo}.png`)
+      mkdirSync(f.failureDir, { recursive: true })
+      const file = join(f.failureDir, f.file)
       await page.screenshot({ path: file, timeout: 5000 })
       artifacts.push(file)
     } catch {
@@ -581,44 +607,29 @@ async function failureEvidence(
   }
   try {
     evidence.push(`url: ${page.url()}`)
-    if ('element' in step) {
-      const all = await resolveAll(page, spec, step.element, 'text' in step ? step.text : undefined)
+    if (f.element) {
+      const all = await resolveAll(page, spec, f.element, f.qualifier)
       const count = all ? await all.count() : 0
-      if (!count) evidence.push(`${step.element}: no element on the page matches it`)
+      if (!count) evidence.push(`${f.element}: no element on the page matches it`)
       else {
         const first = all!.first()
-        const state = await first.evaluate((el) => {
-          const h = el as {
-            getBoundingClientRect(): DOMRectLike
-            tagName: string
-            disabled?: boolean
-          }
-          const r = h.getBoundingClientRect()
-          const cx = r.x + r.width / 2
-          const cy = r.y + r.height / 2
-          const doc = (globalThis as unknown as { document: DocumentLike }).document
-          const top = doc.elementFromPoint(cx, cy)
-          const describe = (n: NodeLike | null) =>
-            n
-              ? `${n.tagName.toLowerCase()}${n.id ? `#${n.id}` : ''}${n.getAttribute('data-testid') ? `[data-testid=${n.getAttribute('data-testid')}]` : ''}${n.className && typeof n.className === 'string' ? `.${n.className.split(/\s+/).filter(Boolean).slice(0, 2).join('.')}` : ''}`
-              : 'nothing'
-          return {
-            tag: h.tagName.toLowerCase(),
-            box: `${Math.round(r.width)}x${Math.round(r.height)} at ${Math.round(r.x)},${Math.round(r.y)}`,
-            disabled: h.disabled === true,
-            covered:
-              top &&
-              top !== (el as unknown as NodeLike) &&
-              !(el as unknown as NodeLike).contains(top)
-                ? describe(top)
-                : '',
-          }
-        })
+        const a = await first.evaluate(inspectElement)
+        await page.waitForTimeout(300)
+        const b = await all!
+          .first()
+          .evaluate(inspectElement)
+          .catch(() => undefined)
         const visible = await first.isVisible().catch(() => false)
         evidence.push(
-          `${step.element}: ${count} match(es); first is <${state.tag}> ${state.box}, ${visible ? 'visible' : 'not visible'}${state.disabled ? ', disabled' : ''}${state.covered ? `, covered by ${state.covered}` : ''}`,
+          `${f.element}: ${count} match(es); first is <${a.tag}> ${a.box}, ${visible ? 'visible' : 'not visible'}${a.disabled ? ', disabled' : ''}${a.readOnly ? ', read-only' : ''}${a.coveredBy ? `, covered by ${a.coveredBy}` : ''}${b && !b.seenBefore ? '; the node was replaced between two looks 300 ms apart (the screen re-renders)' : ''}`,
         )
       }
+    }
+    if (f.browserErrors.length) {
+      const last = f.browserErrors.slice(-5)
+      evidence.push(
+        `browser errors (${f.browserErrors.length}${f.browserErrors.length > last.length ? ', last 5 shown' : ''}): ${last.join(' | ')}`,
+      )
     }
   } catch (err) {
     evidence.push(`could not inspect the page: ${firstLine((err as Error).message)}`)
@@ -626,6 +637,43 @@ async function failureEvidence(
   return {
     ...(evidence.length ? { evidence } : {}),
     ...(artifacts.length ? { artifacts } : {}),
+  }
+}
+
+/**
+ * Runs in the page. Written without any inner function: `tsx` compiles with esbuild's keepNames,
+ * which wraps nested functions in a `__name(...)` helper that does not exist inside the browser.
+ */
+function inspectElement(el: unknown): {
+  tag: string
+  box: string
+  disabled: boolean
+  readOnly: boolean
+  coveredBy: string
+  seenBefore: boolean
+} {
+  const h = el as ElementLike
+  const r = h.getBoundingClientRect()
+  const doc = (globalThis as unknown as { document: DocumentLike }).document
+  const top = doc.elementFromPoint(r.x + r.width / 2, r.y + r.height / 2)
+  let coveredBy = ''
+  if (top && top !== h && !h.contains(top)) {
+    const cls =
+      typeof top.className === 'string'
+        ? top.className.split(/\s+/).filter(Boolean).slice(0, 2).join('.')
+        : ''
+    const testId = top.getAttribute('data-testid')
+    coveredBy = `${top.tagName.toLowerCase()}${top.id ? `#${top.id}` : ''}${testId ? `[data-testid=${testId}]` : ''}${cls ? `.${cls}` : ''}`
+  }
+  const seenBefore = h.__mpf === 1
+  h.__mpf = 1
+  return {
+    tag: h.tagName.toLowerCase(),
+    box: `${Math.round(r.width)}x${Math.round(r.height)} at ${Math.round(r.x)},${Math.round(r.y)}`,
+    disabled: h.disabled === true,
+    readOnly: h.readOnly === true,
+    coveredBy,
+    seenBefore,
   }
 }
 
@@ -642,6 +690,12 @@ interface NodeLike {
   className: unknown
   getAttribute(name: string): string | null
   contains(other: NodeLike | null): boolean
+}
+interface ElementLike extends NodeLike {
+  getBoundingClientRect(): DOMRectLike
+  disabled?: boolean
+  readOnly?: boolean
+  __mpf?: number
 }
 interface DocumentLike {
   elementFromPoint(x: number, y: number): NodeLike | null

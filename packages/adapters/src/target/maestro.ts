@@ -1,4 +1,5 @@
 import type { AppSpec, Behavior, Element } from '@mpf/core'
+import { startScreenOf } from './start-screen.ts'
 import { UNIQUE_PLACEHOLDER, uniqueToken } from './web/executor.ts'
 
 /** Test id every scaffold puts on its root view (`AppRoot` on iOS and Android, `#app` on the web). */
@@ -48,6 +49,19 @@ const CAPTIONED_KINDS = new Set<string>(['button', 'link', 'text'])
 /** Maestro's pointer gestures; a behavior's tap, doubleTap, and longPress steps map onto them one to one. */
 type Gesture = 'tapOn' | 'doubleTapOn' | 'longPressOn'
 
+/** Steps whose element must be on screen for the step to make sense (not `expectHidden`). */
+const FOLLOWED_OPS = new Set([
+  'tap',
+  'doubleTap',
+  'longPress',
+  'type',
+  'select',
+  'swipe',
+  'expectVisible',
+  'expectText',
+  'expectCount',
+])
+
 export function compileMaestroFlow(
   spec: AppSpec,
   behavior: Behavior,
@@ -56,10 +70,20 @@ export function compileMaestroFlow(
   const elements = new Map<string, Element>(
     spec.screens.flatMap((s) => s.elements.map((e) => [e.id, e] as const)),
   )
+  // The screen the flow opens on: the behavior's, unless its first element step belongs elsewhere.
+  const { screen: start, corrected } = startScreenOf(spec, behavior)
+  // The one screen an element belongs to; an id shared by several screens says nothing.
+  const screenOfElement = new Map<string, string | undefined>()
+  for (const screen of spec.screens)
+    for (const e of screen.elements)
+      screenOfElement.set(e.id, screenOfElement.has(e.id) ? undefined : screen.id)
   const lines: string[] = [
     `appId: ${opts.appId}`,
     `name: ${yamlString(`${behavior.id} ${behavior.title}`)}`,
     '---',
+    ...(corrected
+      ? [`# opens on ${start}: the behavior says ${corrected}, but its first step belongs here`]
+      : []),
   ]
   const unverifiable: string[] = []
   // One fresh token per compiled flow: `{{unique}}` in typed and expected text (a sign-up email).
@@ -190,7 +214,7 @@ export function compileMaestroFlow(
   // AppSpec edge, so a restart relaunches where the user was. A target app opens on the behavior's
   // screen. Source apps have no factory hooks: screens are reached by tapping along the edges from
   // the root, an empty seed is a clean launch, and anything else stays unverifiable.
-  let current = sourceApp ? rootScreenOf(spec) : behavior.screen
+  let current = sourceApp ? rootScreenOf(spec) : start
   const hooked = sourceApp && opts.sourceHooks ? hookMatcher(opts.sourceHooks) : () => true
   const isHooked = (elementId: string): boolean => {
     const el = elements.get(elementId)
@@ -317,6 +341,19 @@ export function compileMaestroFlow(
       current = edge.to
     }
   }
+  /**
+   * A step that acts on or asserts an element of a neighbouring screen says the user got there:
+   * a tap on a row's excerpt opens the editor although the edge names the row's title, and the
+   * next assertion on the editor is the proof. Only screens an edge leads to from here count, so a
+   * stray assertion cannot teleport the tracker.
+   */
+  const follow = (elementId: string): void => {
+    const screen = screenOfElement.get(elementId)
+    if (!screen || screen === current) return
+    if (!spec.navigation.edges.some((e) => e.from === current && e.to === screen)) return
+    history.push(current)
+    current = screen
+  }
   if (sourceApp) {
     const blockers: string[] = []
     for (const [i, st] of behavior.steps.entries()) {
@@ -330,10 +367,10 @@ export function compileMaestroFlow(
     }
     lines.push('- launchApp:', '    clearState: true')
     // A leading `navigate` step says where the behavior starts; otherwise its screen does.
-    const intro = firstOp === 'navigate' ? [] : walkTo(behavior.screen)
+    const intro = firstOp === 'navigate' ? [] : walkTo(start)
     if (!intro) {
       unverifiable.push(
-        `no navigation path from ${rootScreenOf(spec)} to ${behavior.screen} in the AppSpec edges`,
+        `no navigation path from ${rootScreenOf(spec)} to ${start} in the AppSpec edges`,
       )
       return { yaml: '', unverifiable: unverifiable.join('; ') }
     }
@@ -344,10 +381,11 @@ export function compileMaestroFlow(
     if (firstOp === 'navigate' || firstOp === 'openRoute') {
       if (!byArgument) lines.push('- launchApp:', '    clearState: true')
     } else {
-      lines.push(...goto(behavior.screen, [], true))
+      lines.push(...goto(start, [], true))
     }
   }
   for (const [index, step] of behavior.steps.entries()) {
+    if (FOLLOWED_OPS.has(step.op) && 'element' in step) follow(step.element)
     switch (step.op) {
       case 'navigate':
         if (sourceApp) {
@@ -377,7 +415,7 @@ export function compileMaestroFlow(
             '    clearState: true',
             '    arguments:',
             `      ${opts.seedArgument}: ${yamlString(JSON.stringify(step.state))}`,
-            `      ${routeArg}: ${yamlString(behavior.screen)}`,
+            `      ${routeArg}: ${yamlString(start)}`,
           )
         } else {
           lines.push(
@@ -386,9 +424,9 @@ export function compileMaestroFlow(
             '    arguments:',
             `      ${opts.seedArgument}: ${yamlString(JSON.stringify(step.state))}`,
           )
-          lines.push(`- openLink: ${opts.deepLinkBase}/${behavior.screen}`)
+          lines.push(`- openLink: ${opts.deepLinkBase}/${start}`)
         }
-        current = behavior.screen
+        current = start
         break
       case 'tap':
       case 'doubleTap':

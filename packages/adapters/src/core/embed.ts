@@ -74,6 +74,10 @@ export function logicRunnerAllow(platform: string): RegExp[] {
         // last path segment carries no extension, so scripts (`./run.sh`) stay out.
         /^swiftc(?:\s|$)/,
         /^xcrun swiftc(?:\s|$)/,
+        // Objective-C sources compile their Foundation-only files with clang (never clang++ or a
+        // clang-* helper, which the anchor excludes).
+        /^clang(?:\s|$)/,
+        /^xcrun clang(?:\s|$)/,
         /^\.\/(?:[\w-][\w.-]*\/)*[\w-]+(?:\s|$)/,
         /^\.build\/(?:[\w-][\w.-]*\/)*[\w-]+(?:\s|$)/,
       ]

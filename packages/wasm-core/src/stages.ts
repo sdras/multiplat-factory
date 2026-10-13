@@ -29,6 +29,7 @@ import {
   vectorsPrompt,
 } from './prompts.ts'
 import { coreFiles, manifestFor } from './template.ts'
+import { sourceToolEnv } from './source-tools.ts'
 import { readVectorSets, runVectors, writeVectorSets } from './vectors.ts'
 
 export const CoreExtractResult = z.object({
@@ -80,6 +81,21 @@ function gather(ctx: StageContext): Gathered | StageOutcome {
     return { status: 'skipped', reason: 'the plan enabled a shared core but listed no functions' }
   return { spec, plan, dir: coreDir(ctx), sourceDir: join(ctx.run.runDir, 'source') }
 }
+
+/**
+ * Glue every core worker may run regardless of the source platform: `node` (always present, the
+ * factory runs on it) for reading and writing vector JSON. It never makes a vector `executed`;
+ * only the source's own interpreter or a harness built from the source's files does.
+ */
+const GLUE_BASH = logicRunnerAllow('web')
+
+/** The source platform's toolchain for a worker, layered over the env the stage already built. */
+async function sourceEnv(g: Gathered, config: MpfConfig, base: NodeJS.ProcessEnv) {
+  return sourceToolEnv(g.spec.source.platform, config, g.sourceDir, base)
+}
+
+/** A prompt section naming the tools the worker can run the source with, when there are any. */
+const toolchainSection = (note: string): string => (note ? `\n\n# Toolchain\n${note}` : '')
 
 function isOutcome(x: Gathered | StageOutcome): x is StageOutcome {
   return 'status' in x
@@ -162,21 +178,24 @@ export function coreExtractStage(config: MpfConfig, deps: CoreDeps = {}): StageR
           ? `crate builds (${(first.durationMs / 1000).toFixed(1)}s)`
           : `crate does not build yet (${first.diagnostics.length} diagnostics); the worker starts from there`,
       )
+      const st = await sourceEnv(g, config, t.env)
+      if (st.note) ctx.log('info', `source toolchain: ${st.note.split('. ')[0]}`)
       const worker = {
         role: 'generate' as const,
         effort: 'xhigh' as const,
         cwd: g.dir,
-        readDirs: [g.sourceDir],
+        readDirs: [g.sourceDir, ...st.readDirs],
         bashAllow: [
           ...CARGO_BASH,
           ...logicRunnerAllow(g.spec.source.platform),
+          ...GLUE_BASH,
           ...WRITE_BASH,
           ...READ_ONLY_BASH,
         ],
-        systemPrompt: `${CORE_EXTRACT_SYSTEM}\n\n# Crate conventions\n${files['MPF.md']}`,
+        systemPrompt: `${CORE_EXTRACT_SYSTEM}${toolchainSection(st.note)}\n\n# Crate conventions\n${files['MPF.md']}`,
         outputSchema: CoreExtractResult,
         maxTurns: 150,
-        env: t.env,
+        env: st.env,
       }
       let result = await runWorker(
         ctx,
@@ -284,6 +303,10 @@ export function coreVectorsStage(config: MpfConfig, deps: CoreDeps = {}): StageR
         if (derivedOnly.length)
           ctx.log('info', `derived-only functions kept as they are: ${derivedOnly.join(', ')}`)
         const total = already.reduce((n, x) => n + x.vectors.length, 0)
+        const executed = already.reduce(
+          (n, x) => n + x.vectors.filter((v) => v.provenance === 'executed').length,
+          0,
+        )
         for (const set of already)
           ctx.addArtifact({
             kind: 'golden-vectors',
@@ -292,7 +315,7 @@ export function coreVectorsStage(config: MpfConfig, deps: CoreDeps = {}): StageR
           })
         ctx.log(
           'info',
-          `extraction already recorded ${total} executed vectors for all ${already.length} functions; nothing to derive`,
+          `extraction already recorded ${total} vectors for ${already.length} functions (${executed} executed${derivedOnly.length ? `, ${derivedOnly.length} function(s) derived-only` : ''}); nothing to derive`,
         )
         return {
           status: 'succeeded',
@@ -303,19 +326,22 @@ export function coreVectorsStage(config: MpfConfig, deps: CoreDeps = {}): StageR
           },
         }
       }
+      const st = await sourceEnv(g, config, process.env)
       const result = await runWorker(
         ctx,
         {
           role: 'generate',
           budgetShare: 0.05,
           cwd: g.sourceDir,
-          readDirs: [g.dir],
+          readDirs: [g.dir, ...st.readDirs],
           bashAllow: [
             ...logicRunnerAllow(g.spec.source.platform),
+            ...GLUE_BASH,
             ...WRITE_BASH,
             ...READ_ONLY_BASH,
           ],
-          systemPrompt: VECTORS_SYSTEM,
+          systemPrompt: `${VECTORS_SYSTEM}${toolchainSection(st.note)}`,
+          env: st.env,
           prompt: vectorsPrompt({
             functions: g.plan.core.functions,
             spec: g.spec,
@@ -424,24 +450,26 @@ export function coreBuildStage(config: MpfConfig, deps: CoreDeps = {}): StageRun
         round: number,
         max: number,
       ): Promise<StageOutcome | undefined> => {
+        const st = await sourceEnv(g, config, t.env)
         const r = await runWorker(
           ctx,
           {
             role: 'generate',
             budgetShare: 0.1,
             cwd: g.dir,
-            readDirs: [g.sourceDir],
+            readDirs: [g.sourceDir, ...st.readDirs],
             bashAllow: [
               ...CARGO_BASH,
               ...logicRunnerAllow(g.spec.source.platform),
+              ...GLUE_BASH,
               ...READ_ONLY_BASH,
             ],
-            systemPrompt: CORE_EXTRACT_SYSTEM,
+            systemPrompt: `${CORE_EXTRACT_SYSTEM}${toolchainSection(st.note)}`,
             prompt: coreFixPrompt(kind, detail, round, max),
             outputSchema: CoreExtractResult,
             maxTurns: 100,
             resume: session,
-            env: t.env,
+            env: st.env,
           },
           agent,
         )

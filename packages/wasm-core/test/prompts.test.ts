@@ -121,3 +121,16 @@ describe('executed-vector guidance', () => {
     ).toContain('`node`')
   })
 })
+
+describe('executedVectorsGuidance', () => {
+  it('tells an Objective-C source worker to compile with clang and a Swift one with swiftc', () => {
+    const objc = executedVectorsGuidance('ios', 'objective-c')
+    expect(objc).toMatch(/xcrun clang -fobjc-arc -framework Foundation/)
+    expect(objc).toMatch(/main\.m/)
+    expect(objc).not.toMatch(/swiftc/)
+    const swift = executedVectorsGuidance('ios', 'swift')
+    expect(swift).toMatch(/swiftc/)
+    expect(swift).not.toMatch(/clang/)
+    expect(executedVectorsGuidance('android', 'java')).toMatch(/javac/)
+  })
+})

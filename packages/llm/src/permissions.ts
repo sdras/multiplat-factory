@@ -54,9 +54,11 @@ export function decide(
     let rest = cmd
     const cd = /^cd\s+("[^"]+"|'[^']+'|\S+)\s*(?:&&|;)\s*/.exec(cmd)
     if (cd) {
-      const dir = cd[1]!.replace(/^["']|["']$/g, '')
+      const raw = cd[1]!.replace(/^["']|["']$/g, '')
+      // A relative target is relative to the worker's cwd (its first write root), not to this process.
+      const dir = isAbsolute(raw) ? raw : resolve(policy.writeRoots[0] ?? '/', raw)
       if (!within(dir, [...policy.writeRoots, ...policy.readRoots])) {
-        return { allow: false, reason: `cd outside the workspace: ${dir}` }
+        return { allow: false, reason: `cd outside the workspace: ${raw}` }
       }
       rest = cmd.slice(cd[0].length)
     }
@@ -66,7 +68,13 @@ export function decide(
     // Every command in a `for … do … done` loop or a `;`/`&&`/`||` sequence must be allowed on its own;
     // workers read several files this way and the loop is only as safe as its body.
     const parts = commandsOf(rest)
-    const denied = parts.find((part) => !policy.bashAllow.some((re) => re.test(part)))
+    // The allowlist speaks in relative paths (`cp ../x` and `rm -rf /` never match). A worker that
+    // names its own workspace or a read root by its absolute path is doing the same thing, so those
+    // prefixes read as `.` for the match; the scan below still judges every absolute path.
+    const roots = [...policy.writeRoots, ...policy.readRoots].map((r) => resolve(r))
+    const relativized = (part: string): string =>
+      roots.reduce((acc, root) => acc.split(`${root}/`).join('./').split(root).join('.'), part)
+    const denied = parts.find((part) => !policy.bashAllow.some((re) => re.test(relativized(part))))
     if (denied !== undefined) {
       return {
         allow: false,
@@ -74,7 +82,10 @@ export function decide(
       }
     }
     if (/(^|[\s/'"])\.\.(\/|\s|$)/.test(cmd) || /~\//.test(cmd)) {
-      return { allow: false, reason: 'command must stay inside the workspace (no .. or ~ paths)' }
+      return {
+        allow: false,
+        reason: `command must stay inside the workspace (no .. or ~ paths): ${cmd.slice(0, 80)}`,
+      }
     }
     const escapes = absolutePaths(cmd).filter(
       (p) => !within(p, [...policy.writeRoots, ...policy.readRoots]),
@@ -138,14 +149,45 @@ export function commandsOf(line: string): string[] {
       return ' '
     },
   )
-  out.push(
-    ...rest
-      .trim()
-      .split(/\s*(?:;|&&|\|\||\n)\s*/)
-      .map((c) => c.trim())
-      .filter(Boolean),
-  )
+  out.push(...splitSequence(rest))
   return out
+}
+
+/**
+ * Split a shell sequence on `;`, `&&`, `||`, and newlines outside quotes, so a quoted separator
+ * (`sed 's|a;b|c|'`, `grep 'x;y'`) stays inside its command.
+ */
+function splitSequence(line: string): string[] {
+  const parts: string[] = []
+  let current = ''
+  let quote: string | undefined
+  for (let i = 0; i < line.length; i++) {
+    const ch = line[i]!
+    if (quote) {
+      current += ch
+      if (ch === quote && line[i - 1] !== '\\') quote = undefined
+      continue
+    }
+    if (ch === "'" || ch === '"') {
+      quote = ch
+      current += ch
+      continue
+    }
+    if (ch === ';' || ch === '\n') {
+      parts.push(current)
+      current = ''
+      continue
+    }
+    if ((ch === '&' || ch === '|') && line[i + 1] === ch) {
+      parts.push(current)
+      current = ''
+      i++
+      continue
+    }
+    current += ch
+  }
+  parts.push(current)
+  return parts.map((c) => c.trim()).filter(Boolean)
 }
 
 /** `S=/path; ls $S` or `FOO=1 cargo test` without the leading `NAME=value` tokens (quoted values included). */

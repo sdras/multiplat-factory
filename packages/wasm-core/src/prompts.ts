@@ -5,19 +5,28 @@ import type { AppSpec, CoreFunction, Platform, PortPlan } from '@mpf/core'
  * provenance. Platform knowledge only, no framework names; the stage's bash allowlist
  * (`logicRunnerAllow` in the adapters) admits exactly these commands.
  */
-export function executedVectorsGuidance(platform: Platform): string {
+export function executedVectorsGuidance(platform: Platform, language?: string): string {
+  if (platform === 'ios' && /objective-?c/i.test(language ?? '')) {
+    return [
+      'Executed vectors: no script can import the app, so build a throwaway harness. The Toolchain section says where Xcode is. Copy the Foundation-only `.h`/`.m` files (the model and store classes, never a view controller or anything that imports UIKit) into a scratch folder named `mpf-harness/` directly under your working directory (your cwd is the one place you may write; the core crate directory and any `harness/` folder another worker left there are read-only reference), add a `main.m` that calls each function with every vector input and prints one JSON line per vector, compile with `xcrun clang -fobjc-arc -framework Foundation mpf-harness/*.m -o mpf-harness/run`, run `./mpf-harness/run`, and record what it prints as "executed"; never look for a toolchain yourself.',
+      'Files that import UIKit stay out: keep their vectors "derived" and say so in the note.',
+      '`node` is available for glue scripts that read or write vector JSON; it never makes a vector "executed", only the harness built from the source files does.',
+    ].join(' ')
+  }
   switch (platform) {
     case 'web':
       return 'Executed vectors: run the pure modules with `node` (or `npx tsx` for TypeScript), importing them from the read-only source directory, and record the outputs they actually produce as "executed".'
     case 'ios':
       return [
-        'Executed vectors: no script can import the app, so build a throwaway harness. Copy the pure logic files into a scratch folder named `mpf-harness/` directly under your working directory (your cwd is the one place you may write; the core crate directory and any `harness/` folder another worker left there are read-only reference), add a `main.swift` that calls each function with every vector input and prints one JSON line per vector, compile with `swiftc -o harness <files> main.swift` (or `xcrun swiftc`), run `./harness`, and record what it prints as "executed".',
+        'Executed vectors: no script can import the app, so build a throwaway harness. The Toolchain section says where Xcode is: `swiftc -o mpf-harness/run <files>` (or `xcrun swiftc`) then run the binary; never look for a toolchain yourself. Copy the pure logic files into a scratch folder named `mpf-harness/` directly under your working directory (your cwd is the one place you may write; the core crate directory and any `harness/` folder another worker left there are read-only reference), add a `main.swift` that calls each function with every vector input and prints one JSON line per vector, compile with `swiftc -o harness <files> main.swift` (or `xcrun swiftc`), run `./harness`, and record what it prints as "executed".',
         'The harness must not import UIKit or SwiftUI: leave files that depend on them out, keep their vectors "derived", and say so in the note.',
+        '`node` is available for glue scripts that read or write vector JSON; it never makes a vector "executed", only the harness built from the source files does.',
       ].join(' ')
     case 'android':
       return [
-        'Executed vectors: no script can import the app, so build a throwaway harness. Copy the pure logic files into a scratch folder named `mpf-harness/` directly under your working directory (your cwd is the one place you may write; the core crate directory and any `harness/` folder another worker left there are read-only reference), add a `Main.kt` (or `Main.java`) that calls each function with every vector input and prints one JSON line per vector, compile with `kotlinc <files> Main.kt -include-runtime -d harness.jar` and run `java -jar harness.jar` (or `javac -d out <files> Main.java` and `java -cp out Main`), and record what it prints as "executed".',
+        'Executed vectors: no script can import the app, so build a throwaway harness. The Toolchain section says where the JDK is: `javac -cp <jars> -d mpf-harness/out <files>` then `java -cp <jars>:mpf-harness/out Harness`, with third-party jars from the Gradle cache it names; never look for a JDK yourself. Copy the pure logic files into a scratch folder named `mpf-harness/` directly under your working directory (your cwd is the one place you may write; the core crate directory and any `harness/` folder another worker left there are read-only reference), add a `Main.kt` (or `Main.java`) that calls each function with every vector input and prints one JSON line per vector, compile with `kotlinc <files> Main.kt -include-runtime -d harness.jar` and run `java -jar harness.jar` (or `javac -d out <files> Main.java` and `java -cp out Main`), and record what it prints as "executed".',
         'The harness must not import `android.*` or `androidx.*`: leave files that depend on them out, keep their vectors "derived", and say so in the note.',
+        '`node` is available for glue scripts that read or write vector JSON; it never makes a vector "executed", only the harness built from the source files does.',
       ].join(' ')
   }
 }
@@ -67,7 +76,7 @@ export function coreExtractPrompt(i: CoreExtractPromptInput): string {
     'Pure logic units the analyzer found in the source (file, symbol, description):',
     ...logic.map((l) => `- ${l.file} ${l.symbol} (${l.loc} lines): ${l.description}`),
     '',
-    executedVectorsGuidance(i.spec.source.platform),
+    executedVectorsGuidance(i.spec.source.platform, i.spec.source.language),
     '',
     'AppSpec state and persistence (wire formats to keep):',
     '```json',
@@ -111,7 +120,7 @@ export function vectorsPrompt(i: VectorsPromptInput): string {
       .filter((l) => l.purity === 'pure')
       .map((l) => `- ${l.file} ${l.symbol}: ${l.description}`),
     '',
-    executedVectorsGuidance(i.spec.source.platform),
+    executedVectorsGuidance(i.spec.source.platform, i.spec.source.language),
     '',
     'Write the vector sets now.',
     ...(i.instructions.length

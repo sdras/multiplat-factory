@@ -115,3 +115,4 @@ export {
   summarizeHierarchy,
   type FlowEvidence,
 } from './target/maestro-evidence.ts'
+export { startScreenOf } from './target/start-screen.ts'

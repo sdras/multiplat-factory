@@ -17,6 +17,7 @@ import {
   rowPrefix,
   triggerElement,
 } from '../src/target/maestro.ts'
+import { startScreenOf } from '../src/target/start-screen.ts'
 
 const spec: AppSpec = {
   name: 'Counter',
@@ -818,6 +819,114 @@ describe('source-app flows on an app with its own hooks', () => {
     // Without a back edge the walk takes the forward edge the spec offers (save), as before.
     const saving = compileMaestroFlow(notes, b, { ...src, platform: 'ios' })
     expect(saving.yaml).toContain('id: "save-note"')
+  })
+
+  it('follows a tap that opens a screen through a sibling of the edge trigger', () => {
+    // The edge names the row's title; the behavior taps the row's excerpt, which opens the same
+    // editor. The assertion on the editor moves the tracker, so the later navigate walks back.
+    const rows: AppSpec = {
+      ...notes,
+      screens: [
+        {
+          ...notes.screens[0]!,
+          elements: [
+            ...notes.screens[0]!.elements,
+            {
+              id: 'note-row-excerpt-0',
+              kind: 'text',
+              label: 'Excerpt',
+              testId: 'note-row-excerpt-0',
+            },
+          ],
+        },
+        notes.screens[1]!,
+      ],
+      navigation: {
+        ...notes.navigation,
+        edges: [
+          ...notes.navigation.edges,
+          { from: 'list', to: 'editor', trigger: 'Tap a note row (`note-row-0`) — opens it' },
+          {
+            from: 'editor',
+            to: 'list',
+            trigger: 'Tap the navigation back button — discards edits',
+          },
+        ],
+      },
+    }
+    const hooks = {
+      ...src,
+      sourceHooks: [...src.sourceHooks, 'note-row-excerpt-<indexPath.row>', 'editor-title'],
+    }
+    const b: Behavior = {
+      ...base,
+      screen: 'list',
+      steps: [
+        { op: 'navigate', screen: 'list' },
+        { op: 'tap', element: 'note-row-excerpt-0' },
+        { op: 'expectVisible', element: 'editor-title' },
+        { op: 'type', element: 'note-title', text: 'Changed' },
+        { op: 'navigate', screen: 'list' },
+        { op: 'expectVisible', element: 'add-note' },
+      ],
+    }
+    const android = compileMaestroFlow(rows, b, { ...hooks, platform: 'android' })
+    expect(android.unverifiable).toBeUndefined()
+    const typed = android.yaml.indexOf('inputText: "Changed"')
+    const back = android.yaml.indexOf('\n- back\n')
+    expect(typed).toBeGreaterThan(-1)
+    expect(back).toBeGreaterThan(typed)
+    // An assertion on a screen no edge leads to from here does not move the tracker.
+    const stray: Behavior = {
+      ...base,
+      screen: 'list',
+      steps: [
+        { op: 'navigate', screen: 'list' },
+        { op: 'expectVisible', element: 'editor-title' },
+        { op: 'navigate', screen: 'list' },
+      ],
+    }
+    const noEdge: AppSpec = {
+      ...rows,
+      navigation: { ...rows.navigation, edges: [rows.navigation.edges[1]!] },
+    }
+    expect(compileMaestroFlow(noEdge, stray, { ...hooks, platform: 'android' }).yaml).not.toContain(
+      '\n- back\n',
+    )
+  })
+
+  it('opens where the first element step belongs when the behavior names another screen', () => {
+    const target = {
+      appId: 'dev.example.notes',
+      deepLinkBase: 'mpf://dev.example.notes',
+      seedArgument: 'mpf_seed',
+      platform: 'android' as const,
+    }
+    const misnamed: Behavior = {
+      ...base,
+      screen: 'editor',
+      steps: [
+        { op: 'tap', element: 'add-note' },
+        { op: 'type', element: 'note-title', text: 'Draft' },
+      ],
+    }
+    const flow = compileMaestroFlow(notes, misnamed, target)
+    expect(flow.yaml).toContain('openLink: mpf://dev.example.notes/list')
+    expect(flow.yaml).not.toContain('openLink: mpf://dev.example.notes/editor')
+    expect(flow.yaml).toContain('# opens on list: the behavior says editor')
+    expect(startScreenOf(notes, misnamed)).toEqual({ screen: 'list', corrected: 'editor' })
+    // A leading navigate keeps the behavior's word; so does an element shared by several screens.
+    const led: Behavior = {
+      ...misnamed,
+      steps: [{ op: 'navigate', screen: 'editor' }, ...misnamed.steps],
+    }
+    expect(startScreenOf(notes, led)).toEqual({ screen: 'editor' })
+    const seeded = compileMaestroFlow(
+      notes,
+      { ...misnamed, steps: [{ op: 'seed', state: { notes: [] } }, ...misnamed.steps] },
+      target,
+    )
+    expect(seeded.yaml).toContain('openLink: mpf://dev.example.notes/list')
   })
 
   it('does not let a templated hook cover an invented lowercase suffix', () => {

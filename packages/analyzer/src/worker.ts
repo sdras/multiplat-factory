@@ -30,6 +30,10 @@ export const READ_ONLY_BASH: RegExp[] = [
   /^printenv\b/,
   /^command -v\b/,
   /^echo\b/,
+  /^printf\b/,
+  // JSON helpers: jq reads only; plutil only in its lint and print modes (it can also rewrite files).
+  /^jq\b/,
+  /^plutil -(?:lint|p)\b/,
   /^git (log|status|ls-files|show|diff)\b/,
 ]
 
@@ -39,10 +43,14 @@ export const READ_ONLY_BASH: RegExp[] = [
  * `rm -rf /` or `cp secret /tmp` fail the allowlist before the path scan even looks.
  */
 export const WRITE_BASH: RegExp[] = [
+  // In-place sed on a relative path is the Edit tool by another name; absolute paths still go
+  // through the sandbox's path scan, and `..` or `~` fail before it.
+  /^sed -i(?:\s|$)/,
   /^mkdir(?: -\w+)*(?: [^\s/-]\S*)+$/,
   /^touch(?: [^\s/-]\S*)+$/,
   /^(?:mv|cp)(?: -\w+)*(?: [^\s/-]\S*){2,}$/,
   /^rm(?: -\w+)*(?: [^\s/-]\S*)+$/,
+  /^rmdir(?: -\w+)*(?: [^\s/-]\S*)+$/,
 ]
 
 /** Map a failed worker result to a stage failure; budget exhaustion is never retried with the same cap. */

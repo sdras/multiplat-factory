@@ -44,11 +44,13 @@ const pageHtml = `<!doctype html>
  */
 const todoHtml = `<!doctype html>
 <html>
+  <head><title>Todos</title></head>
   <body>
     <style>.destroy { display: none } li:hover .destroy { display: inline-block } .edit { display: none } li.editing .edit { display: inline-block }</style>
     <section class="todoapp" ondblclick="const li = event.target.closest('li'); if (li && event.target.tagName === 'LABEL') { li.classList.add('editing'); if (!li.querySelector('.edit')) { const i = document.createElement('input'); i.className = 'edit'; i.value = event.target.textContent; li.appendChild(i) } }" onclick="if (event.target.classList.contains('destroy')) event.target.closest('li').remove()">
       <header class="header">
         <h1>todos</h1>
+        <script>console.error('boom: a page error a person would read first')</script>
         <input class="new-todo" placeholder="What needs to be done?" autofocus onkeydown="if (event.key === 'Enter' && this.value.trim()) { const li = document.createElement('li'); li.innerHTML = '<div class=&quot;view&quot;><input class=&quot;toggle&quot; type=&quot;checkbox&quot;><label>' + this.value.trim() + '</label><button class=&quot;destroy&quot;></button></div>'; document.querySelector('.todo-list').appendChild(li); this.value = '' }">
       </header>
       <main class="main">
@@ -384,7 +386,9 @@ describe.skipIf(!browser)('web executor', () => {
           id: 'detail',
           name: 'Detail',
           route: '/todo/[id]',
-          elements: [],
+          // The same elements as the list, so the step's element does not single out a screen
+          // and the behavior's own `screen` stays the one the flow opens.
+          elements: todoSpec.screens[0]!.elements,
         },
       ],
     }
@@ -518,7 +522,62 @@ describe.skipIf(!browser)('web executor', () => {
     expect(shown.evidence?.join('\n')).toMatch(
       /new-todo: 1 match\(es\); first is <input> \d+x\d+ at \d+,\d+, visible/,
     )
+    expect(shown.evidence?.join('\n')).not.toMatch(/node was replaced/)
+    expect(shown.evidence?.join('\n')).toMatch(/browser errors \(1\): console error: boom/)
     expect(readdirSync(failureDir).length).toBeGreaterThanOrEqual(2)
+  }, 30_000)
+
+  it('tries test hooks before the source selector and never uses a mobile caption as CSS', async () => {
+    const page = await browser!.newPage()
+    try {
+      await page.goto(new URL('/todo', baseUrl).toString())
+      // A Compose source's spec carries the field's caption as its "selector".
+      const mobile: AppSpec = {
+        ...todoSpec,
+        source: { ...todoSpec.source, platform: 'android' },
+        screens: [
+          {
+            ...todoSpec.screens[0]!,
+            elements: todoSpec.screens[0]!.elements.map((e) =>
+              e.id === 'search' ? { ...e, sourceSelector: 'Title' } : e,
+            ),
+          },
+        ],
+      }
+      const byHook = await resolveElement(page, mobile, 'search')
+      expect(await byHook?.evaluate((el) => el.tagName)).toBe('LABEL')
+      // On a web source the selector counts, but only inside the body.
+      const web: AppSpec = {
+        ...todoSpec,
+        screens: [
+          {
+            ...todoSpec.screens[0]!,
+            elements: [
+              ...todoSpec.screens[0]!.elements,
+              {
+                id: 'doc-title',
+                kind: 'text',
+                label: 'Nothing',
+                testId: 'no-such-hook',
+                sourceSelector: 'title',
+              },
+              {
+                id: 'by-class',
+                kind: 'input',
+                label: 'Nothing',
+                testId: 'no-such-hook-2',
+                sourceSelector: '.search-input',
+              },
+            ],
+          },
+        ],
+      }
+      expect(await resolveElement(page, web, 'doc-title')).toBeUndefined()
+      const byClass = await resolveElement(page, web, 'by-class')
+      expect(await byClass?.evaluate((el) => el.tagName)).toBe('INPUT')
+    } finally {
+      await page.close()
+    }
   }, 30_000)
 
   it('counts every element a repeated selector matches, not only the first', async () => {

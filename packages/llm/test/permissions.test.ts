@@ -114,3 +114,78 @@ describe('absolute path scanning in Bash commands', () => {
     ).toEqual({ allow: true })
   })
 })
+
+describe('workspace paths spelled absolutely', () => {
+  const cwd = '/work/runs/r1/core'
+  const source = '/work/runs/r1/source'
+  const policy = {
+    ...defaultPolicy(cwd, [source, '/home/u/.gradle/caches']),
+    bashAllow: [
+      /^mkdir(?: -\w+)*(?: [^\s/-]\S*)+$/,
+      /^(?:mv|cp)(?: -\w+)*(?: [^\s/-]\S*){2,}$/,
+      /^rm(?: -\w+)*(?: [^\s/-]\S*)+$/,
+      /^javac\b/,
+      /^ls\b/,
+    ],
+  }
+  it('reads a workspace or read-root prefix as a relative path for the allowlist', () => {
+    expect(decide(policy, 'Bash', { command: `mkdir -p ${cwd}/mpf-harness/out` }).allow).toBe(true)
+    expect(
+      decide(policy, 'Bash', { command: `cp ${source}/app/src/main/java/Note.java mpf-harness/` })
+        .allow,
+    ).toBe(true)
+    expect(
+      decide(policy, 'Bash', {
+        command: `javac -cp /home/u/.gradle/caches/modules-2/files-2.1/org.json/json/1/x/json-1.jar -d mpf-harness/out mpf-harness/Note.java`,
+      }).allow,
+    ).toBe(true)
+  })
+  it('still refuses paths outside the roots, bare absolute paths, and the root itself for rm', () => {
+    expect(decide(policy, 'Bash', { command: 'cp /etc/passwd mpf-harness/' }).allow).toBe(false)
+    expect(decide(policy, 'Bash', { command: 'rm -rf /' }).allow).toBe(false)
+    expect(decide(policy, 'Bash', { command: 'mv /tmp mpf-harness/' }).allow).toBe(false)
+    expect(decide(policy, 'Bash', { command: `cp ${source}/../secrets mpf-harness/` }).allow).toBe(
+      false,
+    )
+  })
+  it('accepts in-place sed on a workspace file for a write-capable worker, never outside', () => {
+    const writer = { ...policy, bashAllow: [...policy.bashAllow, /^sed -i(?:\s|$)/] }
+    expect(
+      decide(writer, 'Bash', { command: "sed -i '' 's|^pub mod a;|pub mod b;|' src/api/mod.rs" })
+        .allow,
+    ).toBe(true)
+    expect(decide(writer, 'Bash', { command: "sed -i '' 's|a|b|' /etc/hosts" }).allow).toBe(false)
+    expect(decide(writer, 'Bash', { command: "sed -i '' 's|a|b|' ../source/x.rs" }).allow).toBe(
+      false,
+    )
+    expect(decide(policy, 'Bash', { command: "sed -i '' 's|a|b|' src/api/mod.rs" }).allow).toBe(
+      false,
+    )
+  })
+
+  it('lets a worker cd into a subfolder of its workspace by a relative path', () => {
+    expect(decide(policy, 'Bash', { command: 'cd mpf-harness && javac Main.java' }).allow).toBe(
+      true,
+    )
+    expect(decide(policy, 'Bash', { command: `cd ${cwd}/mpf-harness && ls` }).allow).toBe(true)
+    expect(decide(policy, 'Bash', { command: 'cd /tmp && ls' }).allow).toBe(false)
+    const up = decide(policy, 'Bash', { command: 'cd ../source && ls' })
+    expect(up.allow).toBe(false)
+    expect(up.allow === false && up.reason).toMatch(/no \.\. or ~ paths\): cd \.\.\/source && ls/)
+  })
+})
+
+describe('commandsOf and quotes', () => {
+  it('keeps a quoted separator inside its command', () => {
+    expect(commandsOf("sed -i '' 's|^pub mod a;|pub mod b;|' src/api/mod.rs")).toEqual([
+      "sed -i '' 's|^pub mod a;|pub mod b;|' src/api/mod.rs",
+    ])
+    expect(commandsOf('grep \'x;y\' f && ls || echo "a && b"; pwd')).toEqual([
+      "grep 'x;y' f",
+      'ls',
+      'echo "a && b"',
+      'pwd',
+    ])
+    expect(commandsOf('for f in a b; do cat $f; done; ls')).toEqual(['cat $f', 'ls'])
+  })
+})
