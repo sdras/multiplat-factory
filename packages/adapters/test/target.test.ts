@@ -327,11 +327,23 @@ describe('compileMaestroFlow', () => {
     const direct = yaml.indexOf(
       '- extendedWaitUntil:\n    visible:\n      id: "increment"\n      text: "+1"\n    timeout: 4000\n    optional: true',
     )
+    // Probe-then-assert: which shape is on screen is recorded first, and the one real assertion
+    // runs only when neither was. Never `when: notVisible`, which waits for a transient element to
+    // vanish and then fails on it.
+    const probeText = yaml.indexOf(
+      '- runFlow:\n    when:\n      true: "${output.mpfText == \'\'}"\n      visible:\n        id: "increment"\n        text: "+1"\n    commands:\n      - evalScript: ${output.mpfText = \'text\'}',
+    )
+    const probeDescendant = yaml.indexOf(
+      '      visible:\n        id: "increment"\n        containsDescendants:\n          - text: "+1"\n    commands:\n      - evalScript: ${output.mpfText = \'descendant\'}',
+    )
     const fallback = yaml.indexOf(
-      '- runFlow:\n    when:\n      notVisible:\n        id: "increment"\n        text: "+1"\n    commands:\n      - assertVisible:\n          id: "increment"\n          containsDescendants:\n            - text: "+1"',
+      '- runFlow:\n    when:\n      true: "${output.mpfText == \'\'}"\n    commands:\n      - assertVisible:\n          id: "increment"\n          containsDescendants:\n            - text: "+1"',
     )
     expect(direct).toBeGreaterThan(0)
-    expect(fallback).toBeGreaterThan(direct)
+    expect(probeText).toBeGreaterThan(direct)
+    expect(probeDescendant).toBeGreaterThan(probeText)
+    expect(fallback).toBeGreaterThan(probeDescendant)
+    expect(yaml).not.toContain('notVisible')
   })
   it('collapses repeated opens of the same screen', () => {
     const b: Behavior = {

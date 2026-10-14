@@ -640,25 +640,45 @@ export function compileMaestroFlow(
  * Wait for the text without touching the screen first: a snackbar or toast is gone after a swipe,
  * and the reveal scroll is a swipe. Only an element that never appeared is scrolled for.
  */
+/**
+ * Assert that the element shows the text, in whichever shape the platform gives it: on the tagged
+ * node itself (a Text, or iOS's flattened row) or on a descendant (a Compose Button's label).
+ * Probe-then-assert, never `when: notVisible`: Maestro waits for a `notVisible` condition to
+ * come true, so on a transient element (a snackbar) the fallback ran exactly when the banner had
+ * gone and failed on a correct port.
+ */
 function expectText(id: string, text: string, revealLines: string[] = []): string[] {
+  const q = yamlString(id)
+  const t = yamlString(text)
+  const direct = [`id: ${q}`, `text: ${t}`]
+  const descendant = [`id: ${q}`, `containsDescendants:`, `  - text: ${t}`]
+  const probe = (shape: string, selector: string[]): string[] => [
+    `- runFlow:`,
+    `    when:`,
+    `      true: "\${output.mpfText == ''}"`,
+    `      visible:`,
+    ...selector.map((l) => `        ${l}`),
+    `    commands:`,
+    `      - evalScript: \${output.mpfText = '${shape}'}`,
+  ]
   return [
+    `- evalScript: \${output.mpfText = ''}`,
     `- extendedWaitUntil:`,
     `    visible:`,
-    `      id: ${yamlString(id)}`,
-    `      text: ${yamlString(text)}`,
+    ...direct.map((l) => `      ${l}`),
     `    timeout: ${DIRECT_TEXT_WAIT_MS}`,
     `    optional: true`,
     ...revealLines,
+    ...probe('text', direct),
+    ...probe('descendant', descendant),
+    // Neither shape was on screen: one real assertion, so the failure names the element and the
+    // text and the hierarchy is captured.
     `- runFlow:`,
     `    when:`,
-    `      notVisible:`,
-    `        id: ${yamlString(id)}`,
-    `        text: ${yamlString(text)}`,
+    `      true: "\${output.mpfText == ''}"`,
     `    commands:`,
     `      - assertVisible:`,
-    `          id: ${yamlString(id)}`,
-    `          containsDescendants:`,
-    `            - text: ${yamlString(text)}`,
+    ...descendant.map((l) => `          ${l}`),
   ]
 }
 
