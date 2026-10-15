@@ -6,6 +6,8 @@ import type { TestCase } from '@mpf/core'
 export const MAESTRO_DEBUG_DIR = 'maestro-debug'
 
 export interface FlowEvidence {
+  /** The 1-based BehaviorSpec step the failure belongs to, from the compiler's step markers. */
+  failedStep?: number
   /** Workspace-relative paths a fix worker can open (screenshot first). */
   files: string[]
   /** One paragraph for the fix prompt: the failing step and what was on screen. */
@@ -22,8 +24,14 @@ interface HierarchyNode {
  * that fails (and for optional assertions that warn). Pick the last failure of a flow and
  * describe the screen so the worker sees what the assertion saw.
  */
-export function collectFlowEvidence(workspace: string, flowName: string): FlowEvidence | undefined {
-  const root = join(workspace, MAESTRO_DEBUG_DIR)
+export function collectFlowEvidence(
+  workspace: string,
+  flowName: string,
+  passDir?: string,
+): FlowEvidence | undefined {
+  // Only this pass's folder when the caller names it: an older pass's evidence for the same flow
+  // would describe a different build and carry no step markers from the current compile.
+  const root = passDir ?? join(workspace, MAESTRO_DEBUG_DIR)
   if (!existsSync(root)) return undefined
   const flowDir = findFlowDir(root, flowName)
   if (!flowDir) return undefined
@@ -56,6 +64,7 @@ export function collectFlowEvidence(workspace: string, flowName: string): FlowEv
   if (shot) files.unshift(relative(workspace, join(shotsDir, shot)))
   if (!files.length) return undefined
   const logs = join(flowDir, 'logs')
+  let failedStep: number | undefined
   if (existsSync(logs)) {
     const log = readdirSync(logs).find((f) => f.endsWith('.log'))
     if (log) {
@@ -65,9 +74,14 @@ export function collectFlowEvidence(workspace: string, flowName: string): FlowEv
         .filter((l) => /CommandFailed|Assertion is false|Element not found/.test(l))
         .at(-1)
       if (failure) lines.push(`Maestro: ${failure.replace(/^.*\] /, '').slice(0, 300)}`)
+      // The compiler marks every BehaviorSpec step with `output.mpfStep = N`; the last marker that
+      // completed is the step the failure belongs to.
+      for (const m of text.matchAll(/output\.mpfStep = (\d+)\} COMPLETED/g))
+        failedStep = Number(m[1])
+      if (failedStep !== undefined) lines.push(`BehaviorSpec step: ${failedStep}.`)
     }
   }
-  return { files, summary: lines.join('\n') }
+  return { files, summary: lines.join('\n'), failedStep }
 }
 
 /**
@@ -226,11 +240,18 @@ export function summarizeHierarchy(jsonText: string, limit = 40): string {
 }
 
 /** Append the evidence for a failing flow case (matched by its Maestro flow name) to the case. */
-export function attachFlowEvidence(workspace: string, c: TestCase): void {
+export function attachFlowEvidence(workspace: string, c: TestCase, passDir?: string): void {
   const evidence =
-    collectFlowEvidence(workspace, c.name) ??
-    (c.behaviorId ? collectFlowEvidence(workspace, c.behaviorId) : undefined)
-  if (!evidence) return
+    collectFlowEvidence(workspace, c.name, passDir) ??
+    (c.behaviorId ? collectFlowEvidence(workspace, c.behaviorId, passDir) : undefined)
+  if (!evidence) {
+    if (passDir)
+      c.message = [c.message, 'Maestro wrote no debug output for this flow in this pass.']
+        .filter(Boolean)
+        .join('\n')
+    return
+  }
   c.evidence = evidence.files
   c.message = [c.message, evidence.summary].filter(Boolean).join('\n')
+  if (evidence.failedStep !== undefined) c.failedStep = evidence.failedStep
 }

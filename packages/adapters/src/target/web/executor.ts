@@ -236,6 +236,8 @@ export interface StepResult {
   evidence?: string[]
   /** Files written for a failure (a screenshot), absolute paths. */
   artifacts?: string[]
+  /** The 1-based step the behavior failed at. */
+  failedStep?: number
 }
 
 /** Run one behavior in a fresh browser context against the source app. */
@@ -492,6 +494,7 @@ export async function executeBehavior(
           ok: false,
           error: `${at}: ${(err as Error).message.split('\n')[0]}`,
           notes: notes.length ? notes : undefined,
+          failedStep: i + 1,
           ...failure,
         }
       }

@@ -348,6 +348,44 @@ describe('collectFlowEvidence', () => {
     )
     expect(collectFlowEvidence(ws, 'B-006')?.files).toEqual(byName.files)
     expect(collectFlowEvidence(ws, 'B-999')).toBeUndefined()
+    // Step markers: the last `output.mpfStep = N` that completed names the failing BehaviorSpec step.
+    writeFileSync(
+      join(flow, 'logs', 'maestro.log'),
+      [
+        '09:52:01 [ INFO] runner: Run ${output.mpfStep = 1} COMPLETED',
+        '09:52:02 [ INFO] runner: Run ${output.mpfStep = 2} COMPLETED',
+        '09:52:03 [ INFO] runner: Run ${output.mpfStep = 3} RUNNING',
+        '09:52:05 [ERROR] maestro.orchestra.Orchestra.executeCommands: [Command execution] CommandFailed: Assertion is false: id: screen-settings is visible',
+      ].join('\n'),
+    )
+    const marked = collectFlowEvidence(ws, 'B-006')!
+    expect(marked.failedStep).toBe(2)
+    expect(marked.summary).toContain('BehaviorSpec step: 2.')
+    const withStep: TestCase = {
+      id: 'B-006',
+      name: 'B-006 Nav links move between the Counter and Settings screens',
+      behaviorId: 'B-006',
+      status: 'fail',
+      durationMs: 1,
+      artifacts: [],
+    }
+    attachFlowEvidence(ws, withStep)
+    expect(withStep.failedStep).toBe(2)
+    // Scoped to a pass folder: an older pass's folder for the same flow is never used.
+    const older = join(ws, MAESTRO_DEBUG_DIR, 'older-pass', 'B-006 Nav links')
+    mkdirSync(join(older, 'logs'), { recursive: true })
+    mkdirSync(join(older, 'screenshots'), { recursive: true })
+    writeFileSync(join(older, 'screenshots', 'screenshot-❌-1.png'), 'png')
+    writeFileSync(join(older, 'logs', 'maestro.log'), 'Run ${output.mpfStep = 9} COMPLETED')
+    const thisPass = join(ws, MAESTRO_DEBUG_DIR, 'this-pass')
+    mkdirSync(thisPass, { recursive: true })
+    const scoped: TestCase = { ...withStep, message: undefined, failedStep: undefined }
+    attachFlowEvidence(ws, scoped, thisPass)
+    expect(scoped.failedStep).toBeUndefined()
+    expect(scoped.message).toContain('Maestro wrote no debug output for this flow in this pass.')
+    expect(
+      collectFlowEvidence(ws, 'B-006', join(ws, MAESTRO_DEBUG_DIR, 'older-pass'))?.failedStep,
+    ).toBe(9)
 
     const c: TestCase = {
       id: 'B-006',

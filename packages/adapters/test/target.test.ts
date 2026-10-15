@@ -941,6 +941,30 @@ describe('source-app flows on an app with its own hooks', () => {
     expect(seeded.yaml).toContain('openLink: mpf://dev.example.notes/list')
   })
 
+  it('marks every step and reports where a custom step leaves a hole', () => {
+    const holed: Behavior = {
+      ...base,
+      screen: 'list',
+      steps: [
+        { op: 'navigate', screen: 'list' },
+        { op: 'tap', element: 'add-note' },
+        { op: 'custom', description: 'Press Escape' },
+        { op: 'expectVisible', element: 'add-note' },
+      ],
+    }
+    const flow = compileMaestroFlow(notes, holed, src)
+    expect(flow.holeAt).toBe(3)
+    expect(flow.unverifiable).toMatch(/custom step: Press Escape/)
+    const first = flow.yaml.indexOf('- evalScript: ${output.mpfStep = 1}')
+    const second = flow.yaml.indexOf('- evalScript: ${output.mpfStep = 2}')
+    const fourth = flow.yaml.indexOf('- evalScript: ${output.mpfStep = 4}')
+    expect(first).toBeGreaterThan(-1)
+    expect(second).toBeGreaterThan(first)
+    expect(fourth).toBeGreaterThan(second)
+    const whole = compileMaestroFlow(notes, { ...holed, steps: holed.steps.slice(0, 2) }, src)
+    expect(whole.holeAt).toBeUndefined()
+  })
+
   it('does not let a templated hook cover an invented lowercase suffix', () => {
     const hooked = hookMatcher(['note-row-<indexPath.row>', 'line-total-<SKU>'])
     expect(hooked('note-row-swipe-delete')).toBe(false)

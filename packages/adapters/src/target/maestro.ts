@@ -33,6 +33,8 @@ export interface MaestroOptions {
 export interface CompiledMaestro {
   yaml: string
   unverifiable?: string
+  /** The 1-based step the compiler could not express (a `custom` step), when the flow still runs. */
+  holeAt?: number
 }
 
 /**
@@ -386,6 +388,8 @@ export function compileMaestroFlow(
   }
   for (const [index, step] of behavior.steps.entries()) {
     if (FOLLOWED_OPS.has(step.op) && 'element' in step) follow(step.element)
+    // A step marker: the last one in Maestro's log says which BehaviorSpec step a failure is in.
+    lines.push(`- evalScript: \${output.mpfStep = ${index + 1}}`)
     switch (step.op) {
       case 'navigate':
         if (sourceApp) {
@@ -619,13 +623,21 @@ export function compileMaestroFlow(
   if (opts.screenshotPath) lines.push(`- takeScreenshot: ${yamlString(opts.screenshotPath)}`)
   // Collapse consecutive identical navigation commands (seed + restart + navigate often target the same screen).
   const compact: string[] = []
+  const isMarker = (l: string) => l.startsWith('- evalScript: ${output.mpfStep = ')
   for (const line of lines) {
-    if (line.startsWith('- openLink: ') && compact.at(-1) === line) continue
+    if (line.startsWith('- openLink: ')) {
+      // The step markers between two opens do not make them different.
+      let prev = compact.length - 1
+      while (prev >= 0 && isMarker(compact[prev]!)) prev--
+      if (prev >= 0 && compact[prev] === line) continue
+    }
     compact.push(line)
   }
+  const hole = behavior.steps.findIndex((st) => st.op === 'custom')
   return {
     yaml: `${compact.join('\n')}\n`,
     unverifiable: unverifiable.length ? unverifiable.join('; ') : undefined,
+    ...(hole >= 0 ? { holeAt: hole + 1 } : {}),
   }
 }
 

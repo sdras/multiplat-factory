@@ -428,10 +428,16 @@ export function testStage(config: MpfConfig, deps: TargetDeps = {}): StageRunner
         // A flow with a hole in it (a custom step the compiler could not express) cannot be trusted to
         // fail for the port's sake: its failure is reported but does not block the target, buy a fix
         // round, or earn a flake retry.
-        const partial = new Set<string>()
+        // Partial flows by the step their hole is at; a failure before the hole is a real one.
+        const holes = new Map<string, number>()
+        const partialFailure = (c: { behaviorId?: string; failedStep?: number }): boolean => {
+          const hole = holes.get(c.behaviorId ?? '')
+          return hole !== undefined && (c.failedStep === undefined || c.failedStep >= hole)
+        }
         if (ctx.run.options.e2e) {
           flows = await adapter.compileFlows(tctx)
-          for (const f of flows) if (f.path && f.unverifiable) partial.add(f.behaviorId)
+          for (const f of flows)
+            if (f.path && f.unverifiable) holes.set(f.behaviorId, f.holeAt ?? 1)
           const unverifiable = flows.filter((f) => !f.path)
           if (unverifiable.length)
             ctx.log(
@@ -465,10 +471,7 @@ export function testStage(config: MpfConfig, deps: TargetDeps = {}): StageRunner
           }
           const mustFailed = flowsResult.cases.some(
             (c) =>
-              c.status === 'fail' &&
-              c.behaviorId &&
-              must.has(c.behaviorId) &&
-              !partial.has(c.behaviorId),
+              c.status === 'fail' && c.behaviorId && must.has(c.behaviorId) && !partialFailure(c),
           )
           if (mustFailed && launch.status === 'pass') {
             // one retry of the failed flows only: cases that pass now are flaky, not failures
@@ -518,7 +521,7 @@ export function testStage(config: MpfConfig, deps: TargetDeps = {}): StageRunner
             hardFailures.add('unit')
           for (const c of r.cases)
             if (c.status === 'fail' && c.behaviorId && must.has(c.behaviorId)) {
-              if (partial.has(c.behaviorId)) partialFailures.add(c.behaviorId)
+              if (partialFailure(c)) partialFailures.add(c.behaviorId)
               else hardFailures.add(c.behaviorId)
             }
         }

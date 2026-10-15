@@ -18,6 +18,8 @@ export const TestCase = z.object({
   artifacts: z.array(Id).default([]),
   /** Workspace-relative files that show the failure (screenshot, view hierarchy). */
   evidence: z.array(z.string()).optional(),
+  /** The 1-based BehaviorSpec step a flow failed at, when the runner can tell. */
+  failedStep: z.number().int().positive().optional(),
 })
 
 /** Results also come from the shared core (parity) and from the source app's own suite, which are not port targets. */

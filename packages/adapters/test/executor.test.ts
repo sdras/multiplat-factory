@@ -519,6 +519,7 @@ describe.skipIf(!browser)('web executor', () => {
     expect(r.ok).toBe(false)
     expect(r.evidence?.join('\n')).toMatch(/todo-label: no element on the page matches it/)
     expect(r.artifacts?.[0]).toMatch(/B-\d+-step-2\.png$/)
+    expect(r.failedStep).toBe(2)
     expect(existsSync(r.artifacts![0]!)).toBe(true)
     const shown = await executeBehavior(
       browser!,

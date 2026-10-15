@@ -90,6 +90,9 @@ function fakeAdapter(script: {
   b002Passes?: boolean
   /** B-001's flow carries a skipped custom step. */
   partial?: boolean
+  /** Where B-001's hole is and where its failure lands (both 1-based) when `partial` is set. */
+  holeAt?: number
+  failedStep?: number
 }): TargetAdapter & { calls: string[]; e2eFlows: string[][] } {
   let builds = 0
   let e2eRuns = 0
@@ -145,7 +148,12 @@ function fakeAdapter(script: {
       return ctx.behaviors.behaviors.map((b) => ({
         behaviorId: b.id,
         path: `maestro/${b.id}.yaml`,
-        ...(script.partial && b.id === 'B-001' ? { unverifiable: 'custom step: tap the row' } : {}),
+        ...(script.partial && b.id === 'B-001'
+          ? {
+              unverifiable: 'custom step: tap the row',
+              ...(script.holeAt ? { holeAt: script.holeAt } : {}),
+            }
+          : {}),
       }))
     },
     async e2e(_ctx, flows): Promise<E2eResult> {
@@ -174,6 +182,9 @@ function fakeAdapter(script: {
             name: f.behaviorId,
             behaviorId: f.behaviorId,
             status: statusOf(f.behaviorId) as 'pass' | 'fail',
+            ...(script.failedStep && f.behaviorId === 'B-001'
+              ? { failedStep: script.failedStep }
+              : {}),
             durationMs: 1,
             artifacts: [],
           })),
@@ -488,6 +499,43 @@ describe('before-fix-loop checkpoint', () => {
 export type { StageContext }
 
 describe('flow retries and partial flows', () => {
+  it('treats a partial flow that fails before its hole as a real failure', async () => {
+    const adapter = fakeAdapter({
+      e2eFailRounds: 99,
+      b002Passes: true,
+      partial: true,
+      holeAt: 5,
+      failedStep: 2,
+    })
+    const { store, run } = await runTargetStages(adapter, { agent: stubAgent })
+    const events = store.listAllEvents(run.id)
+    expect(
+      events.some(
+        (e) => e.type === 'log' && /could not express and do not block the target/.test(e.message),
+      ),
+    ).toBe(false)
+    expect(store.listStages(run.id).find((s) => s.id === 'test:android')?.status).toBe('blocked')
+  })
+
+  it('still treats a partial flow that fails at or after its hole as not blocking', async () => {
+    const adapter = fakeAdapter({
+      e2eFailRounds: 99,
+      b002Passes: true,
+      partial: true,
+      holeAt: 2,
+      failedStep: 2,
+    })
+    const { store, run } = await runTargetStages(adapter, { agent: stubAgent })
+    const events = store.listAllEvents(run.id)
+    expect(
+      events.some(
+        (e) =>
+          e.type === 'log' &&
+          /could not express and do not block the target: B-001/.test(e.message),
+      ),
+    ).toBe(true)
+  })
+
   it('retries only the flows that failed when separating flaky from real failures', async () => {
     const adapter = fakeAdapter({ e2eFailRounds: 1, b002Passes: true })
     const { stages } = await runTargetStages(adapter)

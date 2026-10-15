@@ -158,6 +158,8 @@ export interface CompiledFlow {
   /** Path relative to the workspace, or undefined when the behavior cannot be expressed. */
   path?: string
   unverifiable?: string
+  /** The 1-based step the compiler could not express (a `custom` step); the flow is whole before it. */
+  holeAt?: number
 }
 
 export interface E2eResult {

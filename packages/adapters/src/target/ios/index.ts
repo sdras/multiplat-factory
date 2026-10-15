@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs'
 import { dirname, join } from 'pathe'
 import {
   derivedProductsDir,
@@ -303,7 +303,12 @@ ${ctx.core ? `\n## Shared core\n${iosCoreConventions(ctx.core)}\n` : ''}`
         })
         const rel = `maestro/${b.id}.yaml`
         writeFileSync(join(ctx.workspace, rel), flow.yaml)
-        out.push({ behaviorId: b.id, path: rel, unverifiable: flow.unverifiable })
+        out.push({
+          behaviorId: b.id,
+          path: rel,
+          unverifiable: flow.unverifiable,
+          holeAt: flow.holeAt,
+        })
       } catch (err) {
         out.push({ behaviorId: b.id, unverifiable: (err as Error).message })
       }
@@ -412,6 +417,9 @@ ${ctx.core ? `\n## Shared core\n${iosCoreConventions(ctx.core)}\n` : ''}`
         const maestro = await maestroTools(ctx.config, tools.env)
         if (!maestro) throw new Error('maestro not found; install it or set toolchain.maestro')
         const report = join(ctx.workspace, 'maestro-report.xml')
+        // A report from an earlier pass must never stand in for this one: a batch that dies before
+        // Maestro writes its report (it only writes at the end) then reads as "no report produced".
+        rmSync(report, { force: true })
         // One folder per pass keeps earlier evidence around; lookups take the newest matching flow.
         const debugDir = join(
           ctx.workspace,
@@ -452,7 +460,7 @@ ${ctx.core ? `\n## Shared core\n${iosCoreConventions(ctx.core)}\n` : ''}`
         for (const c of flowOutcome.cases) {
           const m = /(B-\d{3,})/.exec(`${c.id} ${c.name}`)
           if (m) c.behaviorId = m[1]
-          if (c.status === 'fail') attachFlowEvidence(ctx.workspace, c)
+          if (c.status === 'fail') attachFlowEvidence(ctx.workspace, c, debugDir)
         }
         for (const f of flows.filter((x) => !x.path)) {
           flowOutcome.cases.push({

@@ -239,12 +239,14 @@ ${ctx.core ? `\n## Shared core\n${webCoreConventions(ctx.core)}\n` : ''}`
       const rel = `flows/${b.id}.json`
       writeFileSync(join(ctx.workspace, rel), JSON.stringify(b, null, 2))
       const custom = b.steps.filter((s) => s.op === 'custom')
+      const hole = b.steps.findIndex((s) => s.op === 'custom')
       return {
         behaviorId: b.id,
         path: rel,
         unverifiable: custom.length
           ? custom.map((s) => (s.op === 'custom' ? s.description : '')).join('; ')
           : undefined,
+        ...(hole >= 0 ? { holeAt: hole + 1 } : {}),
       }
     })
   },
@@ -427,6 +429,7 @@ ${ctx.core ? `\n## Shared core\n${webCoreConventions(ctx.core)}\n` : ''}`
             evidence: r.artifacts?.length
               ? r.artifacts.map((a) => relative(ctx.workspace, a))
               : undefined,
+            failedStep: r.failedStep,
             artifacts: [],
           })
           screenshots.push({ behaviorId: b.id, file: `screenshots/behaviors/${b.id}.png` })
