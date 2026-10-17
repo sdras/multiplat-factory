@@ -965,6 +965,85 @@ describe('source-app flows on an app with its own hooks', () => {
     expect(whole.holeAt).toBeUndefined()
   })
 
+  it('waits for an unhooked text on a source app before scrolling for it', () => {
+    const b: Behavior = {
+      ...base,
+      screen: 'list',
+      steps: [
+        { op: 'navigate', screen: 'list' },
+        { op: 'expectText', element: 'list-title', text: 'Task marked complete', exact: false },
+      ],
+    }
+    const { yaml } = compileMaestroFlow(notes, b, src)
+    const wait = yaml.indexOf(
+      '- extendedWaitUntil:\n    visible:\n      text: ".*Task marked complete.*"\n    timeout: 4000\n    optional: true',
+    )
+    const scroll = yaml.indexOf(
+      '- scrollUntilVisible:\n    element:\n      text: ".*Task marked complete.*"',
+    )
+    const assert = yaml.indexOf('- assertVisible:\n    text: ".*Task marked complete.*"')
+    expect(wait).toBeGreaterThan(-1)
+    expect(scroll).toBeGreaterThan(wait)
+    expect(assert).toBeGreaterThan(scroll)
+  })
+
+  it('taps a hookless row control beside the row text on a source app, never the text itself', () => {
+    const withControls: AppSpec = {
+      ...notes,
+      screens: [
+        {
+          ...notes.screens[0]!,
+          elements: [
+            ...notes.screens[0]!.elements,
+            { id: 'note-done', kind: 'toggle', label: 'Done checkbox', testId: 'note-done' },
+            { id: 'note-row-delete', kind: 'button', label: 'Delete', testId: 'note-row-delete' },
+            { id: 'todo-item', kind: 'button', label: 'Todo', testId: 'todo-item' },
+          ],
+        },
+        notes.screens[1]!,
+      ],
+    }
+    const flowFor = (element: string) =>
+      compileMaestroFlow(
+        withControls,
+        {
+          ...base,
+          screen: 'list',
+          steps: [
+            { op: 'navigate', screen: 'list' },
+            { op: 'tap', element, text: 'Groceries' },
+          ],
+        },
+        src,
+      )
+    // A toggle has no caption of its own: probe left and right of the row's text, then fall back.
+    const toggle = flowFor('note-done')
+    expect(toggle.unverifiable).toBeUndefined()
+    const probeLeft = toggle.yaml.indexOf(
+      '      visible:\n        leftOf:\n          text: "(?i).*Groceries.*"\n    commands:\n      - evalScript: ${output.mpfTap = \'left\'}',
+    )
+    const fallback = toggle.yaml.indexOf(
+      '      true: "${output.mpfTap == \'\'}"\n    commands:\n      - tapOn:\n          text: "(?i).*Groceries.*"',
+    )
+    expect(probeLeft).toBeGreaterThan(-1)
+    expect(fallback).toBeGreaterThan(probeLeft)
+    expect(toggle.yaml).not.toContain('Done checkbox')
+    // A captioned button beside the row tries its own caption next to the text first.
+    const del = flowFor('note-row-delete')
+    const labelLeft = del.yaml.indexOf(
+      '        text: "(?i)Delete"\n        leftOf:\n          text: "(?i).*Groceries.*"',
+    )
+    const plainLeft = del.yaml.indexOf(
+      '      visible:\n        leftOf:\n          text: "(?i).*Groceries.*"\n    commands:\n      - evalScript: ${output.mpfTap = \'left\'}',
+    )
+    expect(labelLeft).toBeGreaterThan(-1)
+    expect(plainLeft).toBeGreaterThan(labelLeft)
+    // The row itself, named like one, is still tapped by its text directly.
+    const row = flowFor('todo-item')
+    expect(row.yaml).toContain('- tapOn:\n    text: "(?i).*Groceries.*"')
+    expect(row.yaml).not.toContain('leftOf')
+  })
+
   it('does not let a templated hook cover an invented lowercase suffix', () => {
     const hooked = hookMatcher(['note-row-<indexPath.row>', 'line-total-<SKU>'])
     expect(hooked('note-row-swipe-delete')).toBe(false)

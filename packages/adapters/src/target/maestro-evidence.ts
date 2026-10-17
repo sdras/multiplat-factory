@@ -64,7 +64,9 @@ export function collectFlowEvidence(
   if (shot) files.unshift(relative(workspace, join(shotsDir, shot)))
   if (!files.length) return undefined
   const logs = join(flowDir, 'logs')
-  let failedStep: number | undefined
+  // Maestro writes `commands.json` per flow on every platform (iOS flows get no `logs/`): the
+  // last completed `output.mpfStep = N` marker in it is the BehaviorSpec step the failure is in.
+  let failedStep: number | undefined = stepFromCommands(join(flowDir, 'commands.json'))
   if (existsSync(logs)) {
     const log = readdirSync(logs).find((f) => f.endsWith('.log'))
     if (log) {
@@ -76,11 +78,12 @@ export function collectFlowEvidence(
       if (failure) lines.push(`Maestro: ${failure.replace(/^.*\] /, '').slice(0, 300)}`)
       // The compiler marks every BehaviorSpec step with `output.mpfStep = N`; the last marker that
       // completed is the step the failure belongs to.
-      for (const m of text.matchAll(/output\.mpfStep = (\d+)\} COMPLETED/g))
-        failedStep = Number(m[1])
-      if (failedStep !== undefined) lines.push(`BehaviorSpec step: ${failedStep}.`)
+      if (failedStep === undefined)
+        for (const m of text.matchAll(/output\.mpfStep = (\d+)\} COMPLETED/g))
+          failedStep = Number(m[1])
     }
   }
+  if (failedStep !== undefined) lines.push(`BehaviorSpec step: ${failedStep}.`)
   return { files, summary: lines.join('\n'), failedStep }
 }
 
@@ -106,6 +109,29 @@ function findFlowDir(root: string, flowName: string): string | undefined {
     return undefined
   }
   return walk(root, 0)
+}
+
+/** The last completed step marker in a flow's `commands.json`, or undefined when there is none. */
+function stepFromCommands(file: string): number | undefined {
+  if (!existsSync(file)) return undefined
+  let step: number | undefined
+  try {
+    const parsed = JSON.parse(readFileSync(file, 'utf8')) as unknown
+    const items = Array.isArray(parsed)
+      ? parsed
+      : ((parsed as { commands?: unknown[] }).commands ?? [])
+    for (const item of items as {
+      command?: { evalScriptCommand?: { scriptString?: string } }
+      metadata?: { status?: string }
+    }[]) {
+      const script = item.command?.evalScriptCommand?.scriptString ?? ''
+      const m = /output\.mpfStep = (\d+)/.exec(script)
+      if (m && item.metadata?.status === 'COMPLETED') step = Number(m[1])
+    }
+  } catch {
+    return undefined
+  }
+  return step
 }
 
 /** A screenshot a flow took by name (`takeScreenshot: <name>`), wherever Maestro filed it under the debug output. */

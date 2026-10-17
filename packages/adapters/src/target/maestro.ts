@@ -51,6 +51,9 @@ const CAPTIONED_KINDS = new Set<string>(['button', 'link', 'text'])
 /** Maestro's pointer gestures; a behavior's tap, doubleTap, and longPress steps map onto them one to one. */
 type Gesture = 'tapOn' | 'doubleTapOn' | 'longPressOn'
 
+/** Controls that sit beside a row's text rather than showing it: a text qualifier names their row. */
+const ROW_CONTROL_KINDS = new Set<string>(['toggle', 'button'])
+
 /** Steps whose element must be on screen for the step to make sense (not `expectHidden`). */
 const FOLLOWED_OPS = new Set([
   'tap',
@@ -150,33 +153,37 @@ export function compileMaestroFlow(
    * first and the descendant match when the direct one is not on screen (the same pair the text
    * assertions use).
    */
+  // Probe first, act once. The probes run before any tap because a tap changes the screen (a
+  // double tap swaps a label for an editor), and a chain of "if visible then tap" branches
+  // evaluated in sequence would fire a second time afterwards. A shape of '' acts when no probe
+  // matched, so the last act is the fallback and the flow still fails on the real element.
+  const probeTap = (shape: string, selector: string[]): string[] => [
+    `- runFlow:`,
+    `    when:`,
+    `      true: "\${output.mpfTap == ''}"`,
+    `      visible:`,
+    ...selector.map((l) => `        ${l}`),
+    `    commands:`,
+    `      - evalScript: \${output.mpfTap = '${shape}'}`,
+  ]
+  const actTap = (gesture: Gesture, shape: string, selector: string[]): string[] => [
+    `- runFlow:`,
+    `    when:`,
+    `      true: "\${output.mpfTap == '${shape}'}"`,
+    `    commands:`,
+    `      - ${gesture}:`,
+    ...selector.map((l) => `          ${l}`),
+  ]
   const tapById = (id: string, text?: string, gesture: Gesture = 'tapOn'): string[] => {
     if (text === undefined) return [...reveal(id), `- ${gesture}:`, `    id: ${yamlString(id)}`]
     const pattern = yamlString(`.*${escapeRegex(text)}.*`)
     const q = yamlString(id)
-    // Probe first, act once. The shapes, nearest match first: the node that carries the text
-    // itself (iOS flattens a row's labels onto the row), the node with the text on a descendant (an
-    // Android row container), and the control nearest to the text on its left or right (a Compose
-    // checkbox or delete button sits beside the row's label). The probes run before any tap
-    // because a tap changes the screen (a double tap swaps a label for an editor), and a chain of
-    // "if visible then tap" branches evaluated in sequence would fire a second time afterwards.
-    const probe = (shape: string, selector: string[]): string[] => [
-      `- runFlow:`,
-      `    when:`,
-      `      true: "\${output.mpfTap == ''}"`,
-      `      visible:`,
-      ...selector.map((l) => `        ${l}`),
-      `    commands:`,
-      `      - evalScript: \${output.mpfTap = '${shape}'}`,
-    ]
-    const act = (shape: string, selector: string[]): string[] => [
-      `- runFlow:`,
-      `    when:`,
-      `      true: "\${output.mpfTap == '${shape}'}"`,
-      `    commands:`,
-      `      - ${gesture}:`,
-      ...selector.map((l) => `          ${l}`),
-    ]
+    // The shapes, nearest match first: the node that carries the text itself (iOS flattens a
+    // row's labels onto the row), the node with the text on a descendant (an Android row
+    // container), and the control nearest to the text on its left or right (a Compose checkbox
+    // or delete button sits beside the row's label).
+    const probe = probeTap
+    const act = (shape: string, selector: string[]) => actTap(gesture, shape, selector)
     const direct = [`id: ${q}`, `text: ${pattern}`]
     const descendant = [`id: ${q}`, `containsDescendants:`, `  - text: ${pattern}`]
     const left = [`id: ${q}`, `leftOf:`, `  text: ${pattern}`]
@@ -262,8 +269,39 @@ export function compileMaestroFlow(
   ): string[] | undefined => {
     if (isHooked(elementId)) return tapById(idOf(elementId), text, gesture)
     let pattern: string | undefined
-    if (text !== undefined) pattern = `(?i).*${escapeRegex(text)}.*`
-    else {
+    if (text !== undefined) {
+      pattern = `(?i).*${escapeRegex(text)}.*`
+      // A control qualified by its row's text (a checkbox or delete button named by the title)
+      // sits beside that text; tapping the text itself opens the row instead (the Compose sample's
+      // source lost three observations that way). Probe the control's own caption beside the
+      // text, then whatever sits left or right of it, and tap the text only as a last resort.
+      const label = labelText(elementId)
+      const showsTheText = !!label && new RegExp(escapeRegex(text), 'i').test(label)
+      // The row itself (`note-row`, `todo-item`) is what shows the text; a control named after
+      // what it does (`task-item-checkbox`, `todo-row-delete`) sits beside it.
+      const isTheRow = /(?:^|[-_])(?:row|item|cell|card|entry|tile)s?$/i.test(elementId)
+      if (ROW_CONTROL_KINDS.has(kindOf(elementId) ?? '') && !showsTheText && !isTheRow) {
+        const q = yamlString(pattern)
+        const own = label ? yamlString(`(?i)${escapeRegex(label)}`) : undefined
+        const shapes: [string, string[]][] = [
+          ...(own
+            ? ([
+                ['label-left', [`text: ${own}`, `leftOf:`, `  text: ${q}`]],
+                ['label-right', [`text: ${own}`, `rightOf:`, `  text: ${q}`]],
+              ] as [string, string[]][])
+            : []),
+          ['left', [`leftOf:`, `  text: ${q}`]],
+          ['right', [`rightOf:`, `  text: ${q}`]],
+        ]
+        return [
+          ...revealText(pattern),
+          `- evalScript: \${output.mpfTap = ''}`,
+          ...shapes.flatMap(([shape, selector]) => probeTap(shape, selector)),
+          ...shapes.flatMap(([shape, selector]) => actTap(gesture, shape, selector)),
+          ...actTap(gesture, '', [`text: ${q}`]),
+        ]
+      }
+    } else {
       const label = labelText(elementId)
       if (label) pattern = `(?i)${escapeRegex(label)}`
     }
@@ -502,8 +540,14 @@ export function compileMaestroFlow(
           ? fillUnique(step.text)
           : `.*${escapeRegex(fillUnique(step.text))}.*`
         if (sourceApp && !isHooked(step.element)) {
-          // No hook to anchor on: the text itself has to be on screen.
-          lines.push(...revealText(pattern), `- assertVisible:`, `    text: ${yamlString(pattern)}`)
+          // No hook to anchor on: the text itself has to be on screen. Wait for it before any
+          // scroll, so a transient message (a snackbar) is caught while it shows.
+          lines.push(
+            ...waitFor([`text: ${yamlString(pattern)}`]),
+            ...revealText(pattern),
+            `- assertVisible:`,
+            `    text: ${yamlString(pattern)}`,
+          )
           break
         }
         lines.push(...expectText(idOf(step.element), pattern, reveal(idOf(step.element))))

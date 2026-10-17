@@ -439,7 +439,9 @@ ${ctx.core ? `\n## Shared core\n${iosCoreConventions(ctx.core)}\n` : ''}`
             report,
             '--debug-output',
             debugDir,
-            'maestro/',
+            // Only the flows asked for: a flake retry of one flow must not rerun the whole suite
+            // (a "retry of 1 flow" on RealWorld ran all 24 again).
+            ...runnable.map((f) => f.path!),
           ],
           cwd: ctx.workspace,
           env: maestro.env,
@@ -460,6 +462,8 @@ ${ctx.core ? `\n## Shared core\n${iosCoreConventions(ctx.core)}\n` : ''}`
         for (const c of flowOutcome.cases) {
           const m = /(B-\d{3,})/.exec(`${c.id} ${c.name}`)
           if (m) c.behaviorId = m[1]
+          else
+            ctx.log(`flow case without a behavior id (not counted against any behavior): ${c.id}`)
           if (c.status === 'fail') attachFlowEvidence(ctx.workspace, c, debugDir)
         }
         for (const f of flows.filter((x) => !x.path)) {

@@ -130,6 +130,15 @@ function isOutcome(x: Gathered | StageOutcome): x is StageOutcome {
  * Independent review. The critic never sees the worker's transcript: it gets the
  * artifacts, the test results, and read-only access to the generated code.
  */
+/**
+ * How many turns the critic gets: a floor for a small app, more per screen (it reads the port
+ * screen by screen), and more again on each retry, since a worker that ran out of turns once will
+ * run out again at the same cap. RealWorld's twelve screens exhausted the flat 40 twice in a row.
+ */
+export function criticTurns(screens: number, attempt = 0): number {
+  return Math.min(120, 40 + 4 * Math.max(0, screens) + 20 * Math.max(0, attempt))
+}
+
 export function critiqueStage(config: MpfConfig, deps: CriticDeps = {}): StageRunner {
   const agent = deps.agent ?? runAgent
   const maxRounds = deps.maxRounds ?? 2
@@ -183,7 +192,7 @@ export function critiqueStage(config: MpfConfig, deps: CriticDeps = {}): StageRu
             instructions: ctx.takeInstructions(),
           }),
           outputSchema: CriticOutput,
-          maxTurns: 40,
+          maxTurns: criticTurns(g.spec.screens.length, ctx.stage.attempt),
           env: adapter ? (await adapter.available(config, process.env)).env : undefined,
         },
         agent,

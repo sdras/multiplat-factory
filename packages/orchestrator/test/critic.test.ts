@@ -14,7 +14,7 @@ import type { StageRunnerRegistry } from '@mpf/harness'
 import type { TargetAdapter, TestOutcome } from '@mpf/adapters'
 import type { AgentFn } from '@mpf/analyzer'
 import { Orchestrator } from '../src/runner.ts'
-import { critiqueStage, fixStage } from '../src/stages/critic.ts'
+import { critiqueStage, fixStage, criticTurns } from '../src/stages/critic.ts'
 import { buildStage, generateStage, testStage } from '../src/stages/target.ts'
 
 const SPEC = {
@@ -273,5 +273,14 @@ describe('critic and fix loop', () => {
     expect((stages().get('critique:android')?.result as { decision?: string }).decision).toBe(
       'accepted',
     )
+  })
+})
+
+describe('criticTurns', () => {
+  it('grows with the number of screens and with each retry, up to a ceiling', () => {
+    expect(criticTurns(2)).toBe(48)
+    expect(criticTurns(12)).toBe(88)
+    expect(criticTurns(12, 1)).toBe(108)
+    expect(criticTurns(30, 2)).toBe(120)
   })
 })

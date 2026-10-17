@@ -387,6 +387,32 @@ describe('collectFlowEvidence', () => {
       collectFlowEvidence(ws, 'B-006', join(ws, MAESTRO_DEBUG_DIR, 'older-pass'))?.failedStep,
     ).toBe(9)
 
+    // iOS flows get no logs/ folder; commands.json carries the markers on both platforms.
+    const iosFlow = join(ws, MAESTRO_DEBUG_DIR, 'ios-pass', 'B-007 Done flag')
+    mkdirSync(join(iosFlow, 'screenshots'), { recursive: true })
+    writeFileSync(join(iosFlow, 'screenshots', 'step-040-assertCondition-x.png'), 'png')
+    writeFileSync(
+      join(iosFlow, 'commands.json'),
+      JSON.stringify([
+        {
+          command: { evalScriptCommand: { scriptString: '${output.mpfStep = 1}' } },
+          metadata: { status: 'COMPLETED' },
+        },
+        { command: { tapOnElement: {} }, metadata: { status: 'COMPLETED' } },
+        {
+          command: { evalScriptCommand: { scriptString: '${output.mpfStep = 2}' } },
+          metadata: { status: 'COMPLETED' },
+        },
+        {
+          command: { evalScriptCommand: { scriptString: '${output.mpfStep = 3}' } },
+          metadata: { status: 'PENDING' },
+        },
+      ]),
+    )
+    const ios = collectFlowEvidence(ws, 'B-007', join(ws, MAESTRO_DEBUG_DIR, 'ios-pass'))!
+    expect(ios.failedStep).toBe(2)
+    expect(ios.summary).toContain('BehaviorSpec step: 2.')
+
     const c: TestCase = {
       id: 'B-006',
       name: 'B-006 Nav links move between the Counter and Settings screens',
