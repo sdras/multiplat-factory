@@ -108,6 +108,11 @@ export async function startDevServer(opts: StartDevServerOptions): Promise<DevSe
     },
     reject: false,
     cleanup: true,
+    // Lead a process group of its own so stop() can signal the whole tree. `npm run dev` is npm,
+    // then `sh -c`, then the server, and Linux's dash stays resident instead of exec-ing its one
+    // command: a signal to npm alone orphaned the server with our stdout pipe still open, execa
+    // never settled, and the generic-observe test hung on every Linux CI run.
+    detached: process.platform !== 'win32',
     stdin: 'ignore',
     stdout: 'pipe',
     stderr: 'pipe',
@@ -140,9 +145,29 @@ export async function startDevServer(opts: StartDevServerOptions): Promise<DevSe
   }
   child.stdout?.on('data', onData)
   child.stderr?.on('data', onData)
+  const killTree = (signal: NodeJS.Signals) => {
+    if (finished) return
+    try {
+      if (process.platform !== 'win32' && child.pid) process.kill(-child.pid, signal)
+      else child.kill(signal)
+    } catch {
+      try {
+        child.kill(signal)
+      } catch {
+        // already gone
+      }
+    }
+  }
+  const onExit = () => killTree('SIGKILL')
+  process.once('exit', onExit)
   const stop = async () => {
-    if (!finished) child.kill('SIGTERM')
-    await child.catch(() => {})
+    process.off('exit', onExit)
+    killTree('SIGTERM')
+    const force = setTimeout(() => killTree('SIGKILL'), 3000)
+    // A process that left the group (setsid) could keep the pipes open; never hang a stage on it.
+    const giveUp = new Promise<void>((resolve) => setTimeout(resolve, 10_000).unref())
+    await Promise.race([child.catch(() => {}), giveUp])
+    clearTimeout(force)
   }
   const exited = child.then((r) => {
     throw new Error(`dev server exited early (code ${r.exitCode}):\n${output.slice(-2000)}`)

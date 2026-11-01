@@ -46,4 +46,28 @@ describe('startDevServer', () => {
       await handle.stop()
     }
   }, 30_000)
+
+  it.skipIf(process.platform === 'win32')(
+    'stops the whole tree when a shell stays resident between it and the server',
+    async () => {
+      const port = await findFreePort()
+      const server = `require('node:http').createServer((q, r) => r.end('ok')).listen(${port}, '127.0.0.1', () => console.log('http://localhost:${port}/')); setInterval(() => {}, 1000)`
+      // `npm run dev` is npm, then `sh -c`, then the server. Linux's dash keeps itself in the tree
+      // for a plain -c command, and "; true" makes every sh do so: a signal to the shell alone
+      // orphans the server with our pipes open, and stop() must still return with the port freed.
+      const handle = await startDevServer({
+        command: 'sh',
+        args: ['-c', `${JSON.stringify(process.execPath)} -e ${JSON.stringify(server)}; true`],
+        cwd: process.cwd(),
+        port,
+        timeoutMs: 15_000,
+      })
+      expect((await fetch(handle.url)).status).toBe(200)
+      const started = Date.now()
+      await handle.stop()
+      expect(Date.now() - started).toBeLessThan(9_000)
+      await expect(fetch(handle.url, { signal: AbortSignal.timeout(1000) })).rejects.toThrow()
+    },
+    30_000,
+  )
 })

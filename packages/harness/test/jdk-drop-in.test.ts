@@ -32,6 +32,9 @@ describe.skipIf(process.platform === 'win32')('JDKs dropped under the run home',
       ]),
     )
     expect((await resolveJava(ctx, { min: 8, max: 9 }))?.home).toBe(eight)
-    expect((await resolveJava(ctx, { min: 17, max: 24 }))?.home).toBe(seventeen)
+    // The newest JDK in range wins, and a machine may carry its own under /usr/lib/jvm (GitHub's
+    // Linux runners ship Temurin 8 to 21), so pin the range to the drop-in's major: within one
+    // major the drop-in is found first.
+    expect((await resolveJava(ctx, { min: 17, max: 17 }))?.home).toBe(seventeen)
   })
 })
