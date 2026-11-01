@@ -29,7 +29,7 @@ function completion(id: string) {
 <template>
   <BoardHero
     title="Projects"
-    description="A list of all of your projects, ported to other platforms, and their high level status."
+    description="Your apps, the platforms they've been ported to, and the state of every build."
   />
   <div class="board-toolbar">
     <div class="seg-group board-project-filters" aria-label="Filter projects" role="group">
@@ -70,16 +70,13 @@ function completion(id: string) {
       <h2>
         <NuxtLink :to="`/runs/${p.history[0]!.id}`">{{ p.name }}</NuxtLink>
       </h2>
-      <p class="board-path">{{ p.source }}</p>
+      <p class="board-path" :title="p.source">{{ boardPath(p.source) }}</p>
       <div class="row">
         <span v-for="t in p.history[0]!.targets" :key="t" class="tag">{{ boardPlatform[t] }}</span
         ><span v-if="p.history[0]!.options.fake" class="tag">Demo run</span>
       </div>
       <p class="board-project-summary">
-        {{
-          p.history[0]!.summary ||
-          'Open the project to see its current step, test results, and any issues.'
-        }}
+        {{ boardSummary(p.history[0]!, stagesOf[p.history[0]!.id] ?? []) }}
       </p>
       <div class="board-toolbar small">
         <span>Steps complete</span><span>{{ completion(p.history[0]!.id) }}%</span>

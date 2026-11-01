@@ -1,24 +1,41 @@
-/* Release board is an opt-in presentation of the same run data and controls. */
+/* Release board: the default presentation of the same run data and controls. Light by default; a dark palette sits behind the nav's theme toggle. */
 :root[data-dashboard-style='board'] {
-  color-scheme: light dark;
-  --ground: light-dark(#f8f7fc, #24212c);
-  --panel: light-dark(#ffffff, #2d2936);
-  --raised: light-dark(#eeebf5, #393240);
-  --rule: light-dark(#e1dce9, #484051);
-  --rule-soft: light-dark(#eae6f0, #3b3444);
-  --rule-faint: light-dark(#efecf5, #36303e);
-  --ink: light-dark(#30273e, #f1edf7);
-  --ink-2: light-dark(#655d73, #c9c0d6);
-  --ink-3: light-dark(#70677c, #b5aabd);
-  --ink-dim: light-dark(#aaa1b6, #746a81);
-  --accent: light-dark(#7955a7, #cdb5e8);
-  --accent-hover: light-dark(#65428f, #dfc9f7);
-  --good: light-dark(#387958, #92c8ab);
-  --warn: light-dark(#876416, #e0c180);
-  --bad: light-dark(#a63d54, #ee9aae);
-  --font-ui: Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  color-scheme: light;
+  --ground: light-dark(#eef0f3, #1c1b19);
+  --panel: light-dark(#ffffff, #242320);
+  --raised: light-dark(#e3e6eb, #2e2c28);
+  --rule: light-dark(#d9dde3, #3b3832);
+  --rule-soft: light-dark(#e3e6eb, #332f2a);
+  --rule-faint: light-dark(#e9ecf0, #2a2825);
+  --ink: light-dark(#141a22, #efeae0);
+  --ink-2: light-dark(#4a5361, #c3bcae);
+  --ink-3: light-dark(#68717f, #9b948a);
+  --ink-dim: light-dark(#9aa3b0, #6d675d);
+  --accent: light-dark(#ee6a1f, #d9a441);
+  --accent-hover: light-dark(#f07d3a, #e6b65a);
+  /* Accent used as text or an icon: the light orange needs a darker shade to read. */
+  --accent-ink: light-dark(#c24e0d, #d9a441);
+  --on-accent: light-dark(#141a22, #1c1b19);
+  --good: light-dark(#237a4b, #7fc98f);
+  --warn: light-dark(#8a7300, #e3b85c);
+  --bad: light-dark(#c0392b, #ee8a7a);
+  --font-ui: 'Familjen Grotesk', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
   --font-mono: ui-monospace, SFMono-Regular, Menlo, monospace;
-  --font-display: Georgia, 'Times New Roman', serif;
+  --font-display: 'Familjen Grotesk', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+}
+:root[data-dashboard-style='board'][data-theme='dark'] {
+  color-scheme: dark;
+}
+.release-board a:hover,
+.release-board a.inline:hover {
+  color: var(--accent-ink);
+}
+.release-board a.inline:hover {
+  border-bottom-color: var(--accent-ink);
+}
+.release-board ::selection {
+  background: var(--accent);
+  color: var(--on-accent);
 }
 .release-board {
   display: block;
@@ -33,8 +50,8 @@
 }
 .release-board .brand-name {
   text-transform: none;
-  letter-spacing: -0.04em;
-  font: 600 22px/1.3 var(--font-ui);
+  letter-spacing: -0.03em;
+  font: 600 20px/1.3 var(--font-ui);
 }
 .release-board .brand > svg {
   color: var(--accent);
@@ -62,7 +79,7 @@
   color: var(--ink-2);
 }
 .board-nav a:hover {
-  color: var(--accent);
+  color: var(--accent-ink);
 }
 .board-nav a[aria-current='page'] {
   border-color: var(--accent);
@@ -90,15 +107,17 @@
   max-width: 66%;
 }
 .board-hero h1 {
-  font: 400 clamp(30px, 3.2vw, 42px)/1.15 var(--font-display);
-  letter-spacing: -0.045em;
+  font: 600 clamp(30px, 3vw, 40px)/1.1 var(--font-display);
+  letter-spacing: -0.03em;
   margin: 18px 0 14px;
 }
 .board-description {
-  font-size: 14px;
+  font-size: 15px;
   color: var(--ink-2);
-  line-height: 1.7;
+  line-height: 1.65;
   max-width: 620px;
+  /* A newline in a description starts a new line, so a two-sentence intro can break where it reads best. */
+  white-space: pre-line;
 }
 .board-eyebrow {
   font: 11px/1.5 var(--font-ui);
@@ -114,7 +133,8 @@
   height: 314px;
   right: -32px;
   top: -94px;
-  opacity: 0.17;
+  opacity: 0.3;
+  mix-blend-mode: multiply;
   transform: rotate(-7deg);
   -webkit-mask-image: radial-gradient(
     ellipse at 62% 24%,
@@ -133,7 +153,15 @@
   width: 100%;
   height: 100%;
   object-fit: contain;
-  filter: saturate(0.55);
+  filter: grayscale(1) contrast(1.15);
+}
+/* On the dark palette the objects warm into the same brass as the accent instead of printing grey. */
+:root[data-theme='dark'] .board-art {
+  mix-blend-mode: normal;
+  opacity: 0.26;
+}
+:root[data-theme='dark'] .board-art img {
+  filter: grayscale(1) sepia(0.6) saturate(1.4) brightness(0.78);
 }
 [data-art='projects'] .board-art {
   width: 560px;
@@ -141,7 +169,6 @@
   top: -150px;
   right: -90px;
   transform: rotate(22deg);
-  opacity: 0.14;
   -webkit-mask-image: radial-gradient(
     ellipse at 55% 28%,
     #000 16%,
@@ -189,7 +216,6 @@
   top: -30px;
   right: 4px;
   transform: rotate(24deg);
-  opacity: 0.18;
   -webkit-mask-image: linear-gradient(
     to bottom,
     #000 32%,
@@ -219,6 +245,7 @@
   background: var(--panel);
   border: 1px solid var(--rule);
   border-radius: 14px;
+  box-shadow: 0 1px 2px light-dark(rgba(20, 26, 34, 0.05), transparent);
   padding: 26px;
   min-width: 0;
   display: flex;
@@ -226,12 +253,13 @@
   gap: 16px;
 }
 .board-card h2 {
-  font: 500 18px/1.4 var(--font-ui);
+  font: 600 18px/1.4 var(--font-ui);
   letter-spacing: -0.02em;
 }
 .board-card .board-serif {
-  font: 400 30px/1.2 var(--font-display);
-  letter-spacing: -0.035em;
+  font: 600 30px/1.2 var(--font-display);
+  letter-spacing: -0.03em;
+  font-variant-numeric: tabular-nums;
 }
 .board-card .board-toolbar {
   margin-bottom: 0;
@@ -245,7 +273,7 @@
   gap: 14px;
 }
 .board-project h2 {
-  font-size: 21px;
+  font-size: 20px;
 }
 .board-project-summary {
   font-size: 13px;
@@ -267,8 +295,8 @@
   height: 40px;
   border-radius: 11px;
   background: color-mix(in srgb, var(--accent) 15%, transparent);
-  color: var(--accent);
-  font: 22px var(--font-display);
+  color: var(--accent-ink);
+  font: 600 19px/1 var(--font-ui);
 }
 .board-columns {
   display: grid;
@@ -308,8 +336,8 @@
   margin-right: 9px;
   border-radius: 50%;
   background: color-mix(in srgb, var(--accent) 14%, transparent);
-  color: var(--accent);
-  font: 12px var(--font-ui);
+  color: var(--accent-ink);
+  font: 600 12px var(--font-ui);
 }
 .board-fieldset {
   padding: 0;
@@ -376,8 +404,8 @@
   position: absolute;
   left: 0;
   top: 0;
-  font: 22px var(--font-display);
-  color: var(--accent);
+  font: 600 20px/1.2 var(--font-display);
+  color: var(--accent-ink);
 }
 .board-steps strong {
   font-size: 14px;
@@ -510,9 +538,22 @@
   font: 500 13px/1.4 var(--font-ui);
   min-height: 38px;
   padding: 9px 13px;
+  background: var(--panel);
+  box-shadow: 0 1px 2px light-dark(rgba(20, 26, 34, 0.05), transparent);
+}
+.release-board .btn:disabled {
+  box-shadow: none;
 }
 .release-board .btn.primary {
-  color: var(--ground);
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--on-accent);
+  font-weight: 600;
+}
+.release-board .btn.primary:hover {
+  background: var(--accent-hover);
+  border-color: var(--accent-hover);
+  color: var(--on-accent);
 }
 .release-board input,
 .release-board select,
@@ -555,17 +596,29 @@
   border-radius: 10px;
   padding: 16px 20px;
   margin-bottom: 20px;
+  background: var(--panel);
+  border-color: color-mix(in srgb, var(--warn) 45%, var(--rule));
+}
+.release-board .callout.quiet {
+  border-color: var(--rule);
+}
+.release-board .callout.bad {
+  border-color: color-mix(in srgb, var(--bad) 55%, var(--rule));
 }
 .release-board .callout .head {
   font-family: var(--font-ui);
   text-transform: none;
   letter-spacing: 0;
-  font-weight: 500;
+  font-weight: 600;
+  color: var(--ink);
+}
+.release-board .callout.bad .head {
+  color: var(--bad);
 }
 .release-board .page-head .title {
-  font: 400 30px/1.2 var(--font-display);
+  font: 600 30px/1.2 var(--font-display);
   text-transform: none;
-  letter-spacing: -0.035em;
+  letter-spacing: -0.03em;
 }
 .release-board .page-head {
   padding-top: 22px;
@@ -755,7 +808,7 @@
 }
 .board-test-note summary {
   cursor: pointer;
-  color: var(--accent);
+  color: var(--accent-ink);
   font-size: 12px;
   padding: 6px 0;
 }
@@ -793,4 +846,135 @@
   .release-board .board-project-filters .seg {
     min-height: 44px;
   }
+}
+
+/* The project a run page belongs to, named in the nav before its tabs. */
+.board-nav-project {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  max-width: 240px;
+  padding: 0 10px 0 14px;
+  margin-left: 8px;
+  border-left: 1px solid var(--rule);
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--ink);
+  white-space: nowrap;
+}
+.board-nav-project > span:last-child {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Light and dark, side by side; the current one is tinted. */
+.board-theme-toggle {
+  display: inline-flex;
+  gap: 2px;
+  padding: 3px;
+  margin-left: 10px;
+  border: 1px solid var(--rule);
+  border-radius: 999px;
+  background: var(--panel);
+}
+.board-theme-toggle button {
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--ink-3);
+  cursor: pointer;
+}
+.board-theme-toggle button:hover {
+  color: var(--ink);
+}
+.board-theme-toggle button[aria-pressed='true'] {
+  background: color-mix(in srgb, var(--accent) 16%, var(--panel));
+  color: var(--accent-ink);
+}
+.board-theme-toggle button:focus-visible {
+  outline: 2px solid var(--accent-ink);
+  outline-offset: 1px;
+}
+@media (pointer: coarse) {
+  .board-theme-toggle button {
+    width: 36px;
+    height: 36px;
+  }
+}
+
+/* The steps of one platform's lane, in the board's words. */
+.board-lane-steps {
+  list-style: none;
+  margin: 4px 0 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 12px;
+}
+.board-lane-steps li {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+  font-size: 12px;
+}
+.board-lane-steps b {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--ink);
+}
+.board-lane-steps .board-step-note {
+  color: var(--ink-3);
+}
+.board-lane-steps li[data-state='done'] svg {
+  color: var(--good);
+}
+.board-lane-steps li[data-state='bad'] b,
+.board-lane-steps li[data-state='bad'] svg {
+  color: var(--bad);
+}
+.board-lane-steps li[data-state='live'] .lamp {
+  color: var(--accent-ink);
+}
+.board-lane-steps li[data-state='needs'] b {
+  color: var(--warn);
+}
+.board-lane-steps li[data-state='next'] b {
+  color: var(--ink-3);
+  font-weight: 500;
+}
+
+/* The last run-level messages, newest first. */
+.board-activity {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+}
+.board-activity li {
+  display: grid;
+  grid-template-columns: 86px minmax(0, 1fr);
+  gap: 4px 14px;
+  align-items: baseline;
+  padding: 10px 0;
+  border-top: 1px solid var(--rule);
+  font-size: 13px;
+  overflow-wrap: anywhere;
+}
+.board-activity li:first-child {
+  border-top: 0;
+  padding-top: 0;
+}
+.board-activity time {
+  font-size: 12px;
+  color: var(--ink-3);
+  white-space: nowrap;
 }

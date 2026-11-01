@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import type { RunView } from '@mpf/core/reducer'
+import type { Stage } from '@mpf/core/schemas'
 const props = defineProps<{ view: RunView; connected: boolean; elapsed: string }>()
 const emit = defineEmits<{ action: [path: string] }>()
 const run = computed(() => props.view.run!)
@@ -21,6 +22,52 @@ const lanes = computed(() =>
       status: groupStatus(stages),
     }
   }),
+)
+/** A lane or step status in the board's words. */
+const STEP_LABELS: Record<string, string> = {
+  succeeded: 'Done',
+  skipped: 'Skipped',
+  running: 'In progress',
+  waiting_human: 'Needs your input',
+  paused: 'Paused',
+  failed: 'Failed',
+  blocked: 'Blocked',
+  cancelled: 'Cancelled',
+  queued: 'Up next',
+  pending: 'Up next',
+}
+const LANE_LABELS: Record<string, string> = {
+  ...STEP_LABELS,
+  succeeded: 'Build complete',
+  failed: 'Needs attention',
+  blocked: 'Needs attention',
+}
+type StepState = 'done' | 'live' | 'needs' | 'bad' | 'next'
+function stepState(s: Stage): StepState {
+  if (s.status === 'succeeded' || s.status === 'skipped') return 'done'
+  if (s.status === 'running') return 'live'
+  if (s.status === 'waiting_human' || s.status === 'paused') return 'needs'
+  if (s.status === 'failed' || s.status === 'blocked' || s.status === 'cancelled') return 'bad'
+  return 'next'
+}
+function stepNote(s: Stage): string {
+  const note = STEP_LABELS[s.status] ?? statusLabel(s.status)
+  return s.costUsd > 0 ? `${note} · ${money(s.costUsd)}` : note
+}
+const { now } = useClock(30_000)
+/** The last things that happened, newest first, read off the stages' own timestamps so no log needs opening. */
+const activity = computed(() =>
+  props.view.stages
+    .filter((s) => s.startedAt)
+    .map((s) => {
+      const at = s.endedAt ?? s.startedAt!
+      const name = `${boardStage[s.kind] ?? s.kind}${s.target ? ` · ${boardPlatform[s.target]}` : ''}`
+      const label = STEP_LABELS[s.status] ?? statusLabel(s.status)
+      const what = s.error?.message ? `${label}: ${s.error.message}` : label
+      return { id: s.id, at, text: `${name}: ${what.toLowerCase()}` }
+    })
+    .sort((a, b) => b.at.localeCompare(a.at))
+    .slice(0, 5),
 )
 const statusDescription = computed(
   () =>
@@ -80,7 +127,10 @@ const statusDescription = computed(
       <div v-for="lane in lanes" :key="lane.target" class="board-lane">
         <div class="board-toolbar">
           <strong>{{ boardPlatform[lane.target] }}</strong
-          ><StatusLamp :status="lane.status" />
+          ><StatusLamp
+            :status="lane.status"
+            :label="LANE_LABELS[lane.status] ?? statusLabel(lane.status)"
+          />
         </div>
         <progress
           :value="lane.done"
@@ -94,19 +144,48 @@ const statusDescription = computed(
               : 'Waiting for the build plan'
           }}
         </p>
+        <ol v-if="lane.stages.length" class="board-lane-steps">
+          <li v-for="s in lane.stages" :key="s.id" :data-state="stepState(s)">
+            <b>
+              <UiIcon v-if="stepState(s) === 'done'" name="check" :size="12" />
+              <UiIcon v-else-if="stepState(s) === 'bad'" name="x" :size="12" />
+              <span
+                v-else
+                class="lamp"
+                :class="{ live: stepState(s) === 'live', hollow: stepState(s) === 'next' }"
+              />
+              {{ boardStage[s.kind] ?? s.kind }}
+            </b>
+            <span class="board-step-note">{{ stepNote(s) }}</span>
+          </li>
+        </ol>
       </div>
     </section>
-    <aside class="board-card board-aside">
-      <h2>Run budget</h2>
-      <h2 class="board-serif">
-        {{ money(run.costUsd) }} <span class="hint">of {{ money(run.options.budgetUsd, 0) }}</span>
-      </h2>
-      <progress :value="run.costUsd" :max="run.options.budgetUsd" aria-label="Run budget used" />
-      <p class="hint">Work stops at your run limit.</p>
-      <div class="board-toolbar small">
-        <span>Elapsed</span><span>{{ elapsed }}</span>
-      </div>
-      <NuxtLink class="inline small" :to="`/runs/${run.id}/plan`">Review the plan</NuxtLink>
+    <aside class="board-aside">
+      <section class="board-card">
+        <h2>Run budget</h2>
+        <h2 class="board-serif">
+          {{ money(run.costUsd) }}
+          <span class="hint">of {{ money(run.options.budgetUsd, 0) }}</span>
+        </h2>
+        <progress :value="run.costUsd" :max="run.options.budgetUsd" aria-label="Run budget used" />
+        <p class="hint">Work stops at your run limit. You can raise it when the run pauses.</p>
+        <div class="board-toolbar small">
+          <span>Elapsed</span><span>{{ elapsed }}</span>
+        </div>
+        <NuxtLink class="inline small" :to="`/runs/${run.id}/plan`">Review the plan</NuxtLink>
+      </section>
+      <section class="board-card">
+        <h2>Recent activity</h2>
+        <ol v-if="activity.length" class="board-activity">
+          <li v-for="t in activity" :key="t.id">
+            <time :datetime="t.at">{{ when(t.at, now) }}</time
+            ><span>{{ t.text }}</span>
+          </li>
+        </ol>
+        <p v-else class="hint">Nothing recorded for this run yet.</p>
+        <a href="#run-technical" class="inline small">Open the technical log</a>
+      </section>
     </aside>
   </div>
 </template>

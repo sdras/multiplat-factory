@@ -45,6 +45,7 @@ jobs:
         run: |
           pnpm --filter @multiplat/factory build
           node apps/cli/dist/main.js --help
+          node apps/cli/dist/main.js --version | grep -F "$(node -p "require('./apps/cli/package.json').version")"
           node apps/cli/dist/main.js doctor || true
 
   web-scaffolds:

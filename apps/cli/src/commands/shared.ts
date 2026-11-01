@@ -1,6 +1,7 @@
 import { consola } from 'consola'
 import { loadConfig, type MpfConfig, type Run } from '@mpf/core'
 import { daemonAlive, readDaemonInfo, startDaemon, type Daemon } from '@mpf/server'
+import { cliVersion } from '../version.ts'
 
 export const log = consola.withTag('mpf')
 
@@ -12,7 +13,10 @@ export async function config(): Promise<MpfConfig> {
 export async function ensureDaemon(cfg: MpfConfig): Promise<{ url: string; embedded?: Daemon }> {
   const info = readDaemonInfo(cfg.dataDir)
   if (await daemonAlive(info)) return { url: info!.url }
-  const embedded = await startDaemon({ config: { ...cfg, server: { ...cfg.server, port: 0 } } })
+  const embedded = await startDaemon({
+    config: { ...cfg, server: { ...cfg.server, port: 0 } },
+    version: cliVersion(),
+  })
   return { url: embedded.url, embedded }
 }
 

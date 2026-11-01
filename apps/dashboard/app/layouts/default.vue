@@ -35,10 +35,23 @@ onMounted(() => {
 })
 onUnmounted(() => clearInterval(reviewPoll))
 const { style, isBoard } = useDashboardStyle()
+const { theme } = useBoardTheme()
+const project = useBoardProject()
 const { ok, checked } = useHealth()
 const host = ref('')
 onMounted(() => (host.value = window.location.host))
-useHead(() => ({ htmlAttrs: { 'data-dashboard-style': style.value } }))
+useHead(() => ({
+  htmlAttrs: {
+    'data-dashboard-style': style.value,
+    'data-theme': isBoard.value ? theme.value : undefined,
+  },
+  meta: [
+    {
+      name: 'theme-color',
+      content: !isBoard.value ? '#1a1917' : theme.value === 'dark' ? '#1c1b19' : '#eef0f3',
+    },
+  ],
+}))
 const runId = computed(() =>
   typeof route.params.id === 'string'
     ? route.params.id
@@ -135,6 +148,14 @@ const detailHero = computed(() => {
         :aria-current="route.path === '/runs/new' && !route.query.from ? 'page' : undefined"
         >New project</NuxtLink
       >
+      <span
+        v-if="runId && project.id === runId && project.name"
+        class="board-nav-project"
+        :title="project.name"
+        ><span class="status" :class="`st-${project.status}`"
+          ><span class="lamp" :class="{ live: isLive(project.status) }" /></span
+        ><span>{{ project.name }}</span></span
+      >
       <NuxtLink
         v-for="[path, label] in runLinks"
         :key="path"
@@ -148,6 +169,7 @@ const detailHero = computed(() => {
         class="board-readiness"
         >Doctor</NuxtLink
       >
+      <BoardThemeToggle />
     </nav>
     <main>
       <BoardHero

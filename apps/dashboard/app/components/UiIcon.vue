@@ -14,6 +14,8 @@ export type IconName =
   | 'image'
   | 'flag'
   | 'device'
+  | 'sun'
+  | 'moon'
 
 type Def = { d: string[]; box: [number, number]; fill?: boolean }
 const DEFS: Record<IconName, Def> = {
@@ -45,6 +47,15 @@ const DEFS: Record<IconName, Def> = {
     d: ['M3.5 1h5a1 1 0 0 1 1 1v8a1 1 0 0 1-1 1h-5a1 1 0 0 1-1-1V2a1 1 0 0 1 1-1z', 'M5 9h2'],
     box: [12, 12],
   },
+  // Light and dark mode, on the board's theme toggle.
+  sun: {
+    d: [
+      'M8 8m-3 0a3 3 0 1 0 6 0a3 3 0 1 0-6 0',
+      'M8 1v1.5M8 13.5V15M1 8h1.5M13.5 8H15M3.05 3.05l1.06 1.06M11.89 11.89l1.06 1.06M3.05 12.95l1.06-1.06M11.89 4.11l1.06-1.06',
+    ],
+    box: [16, 16],
+  },
+  moon: { d: ['M13.5 9.6A6 6 0 0 1 6.4 2.5a6 6 0 1 0 7.1 7.1z'], box: [16, 16] },
 }
 </script>
 

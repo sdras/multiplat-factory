@@ -1,6 +1,7 @@
 import { defineCommand } from 'citty'
 import { startDaemon, defaultDashboardDir } from '@mpf/server'
 import { config, log } from './shared.ts'
+import { cliVersion } from '../version.ts'
 
 export const serveCommand = defineCommand({
   meta: { name: 'serve', description: 'Run the factory daemon (API + dashboard) until stopped' },
@@ -12,7 +13,7 @@ export const serveCommand = defineCommand({
     const cfg = await config()
     if (args.port) cfg.server.port = Number(args.port)
     if (args.host) cfg.server.host = args.host
-    const daemon = await startDaemon({ config: cfg })
+    const daemon = await startDaemon({ config: cfg, version: cliVersion() })
     const dash = defaultDashboardDir()
     log.success(`daemon listening at ${daemon.url}`)
     if (dash) log.info(`dashboard: ${daemon.url}`)

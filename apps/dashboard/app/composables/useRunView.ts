@@ -11,6 +11,15 @@ export function useRunView(runId: string) {
   const connected = ref(false)
   const error = ref<string | undefined>()
   let source: EventSource | undefined
+  /** The project the board's nav names while a run page is open. */
+  const project = useBoardProject()
+  watch(
+    () => view.value.run,
+    (run) => {
+      if (run)
+        project.value = { id: run.id, name: projectName(run.source.locator), status: run.status }
+    },
+  )
 
   async function load() {
     try {

@@ -287,7 +287,7 @@ const readmes = computed(() => [
         </button>
       </div>
 
-      <details class="run-technical" :open="!isBoard">
+      <details id="run-technical" class="run-technical" :open="!isBoard">
         <summary v-if="isBoard">Technical details, live logs &amp; controls</summary>
         <div v-if="isBoard" class="board-toolbar">
           <div class="row">

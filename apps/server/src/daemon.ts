@@ -107,7 +107,8 @@ export async function startDaemon(opts: DaemonOptions): Promise<Daemon> {
     realPipeline,
     availableStages: Object.keys(real),
     dashboardDir: opts.dashboardDir ?? defaultDashboardDir(),
-    version: opts.version ?? '0.1.0',
+    // The CLI passes its package.json version; an embedding without one (tests, demos) says so.
+    version: opts.version ?? 'dev',
   })
 
   const server: ServerType = await new Promise((resolve) => {

@@ -188,7 +188,7 @@ async function submit() {
       :description="
         previous
           ? `Create a new port of ${projectName(previous.source.locator)} using its updated source.`
-          : 'Choose an existing app and the platforms you want to port it to. You can review the plan before building starts.'
+          : 'Choose an existing app and the platforms you want to port it to.\nYou can review the plan before building starts.'
       "
       :art="previous ? 'update' : 'setup'"
     />

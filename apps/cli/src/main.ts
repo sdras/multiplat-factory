@@ -12,11 +12,12 @@ import { portCommand } from './commands/port.ts'
 import { runsCommand } from './commands/runs.ts'
 import { serveCommand } from './commands/serve.ts'
 import { setupCommand } from './commands/setup.ts'
+import { cliVersion } from './version.ts'
 
 const main = defineCommand({
   meta: {
     name: 'mpf',
-    version: '0.1.0',
+    version: cliVersion(),
     description: 'multiplat-factory: port an app from web, iOS, or Android to the other platforms',
   },
   subCommands: {
