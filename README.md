@@ -4,7 +4,7 @@ If you have an app that runs on one platform: the web, iOS, or Android, this Mul
 
 It runs on your own machine, uses your own agent accounts, and you decide on the budget cap.
 
-![video of multiplat factory]([https://s3-us-west-2.amazonaws.com/s.cdpn.io/28963/ecommerce-screenshot.jpg](https://github.com/user-attachments/assets/145f78c3-7b22-4a36-b986-779a44c52e98) "Multiplat Factory")
+https://github.com/user-attachments/assets/145f78c3-7b22-4a36-b986-779a44c52e98
 
 ## How it works
 
