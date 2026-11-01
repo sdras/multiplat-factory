@@ -19,6 +19,7 @@ import {
   type StageContext,
   type StageOutcome,
   type StageRunner,
+  rememberBootedDevice,
 } from '@mpf/harness'
 import {
   MAESTRO_DEBUG_DIR,
@@ -250,7 +251,6 @@ async function observeMobile(
   else if (!maestro) ctx.log('warn', 'maestro not found; behaviors stay unverified')
 
   let device: string
-  let stop: () => Promise<void>
   let install: () => Promise<void>
   let launch: () => Promise<{ ok: boolean; crash?: string; dismissedDialog?: string }>
   let quit: () => Promise<void>
@@ -258,8 +258,8 @@ async function observeMobile(
     const tools = await xcodeTools(ctx.config, app.env)
     if (!tools) return ctx.log('warn', 'Xcode not found; behaviors stay unverified')
     const sim = await ensureSimulator(tools, 'mpf-iphone', (m) => ctx.log('info', m), ctx.signal)
+    if (sim.booted) rememberBootedDevice(ctx.run.runDir, { kind: 'simulator', id: sim.udid })
     device = sim.udid
-    stop = sim.stop
     install = () => installIosApp(tools, sim.udid, app.product)
     launch = () => launchIosApp(tools, sim.udid, app.appId, maestro ? { maestro } : {})
     quit = () => terminateApp(tools, sim.udid, app.appId)
@@ -268,8 +268,8 @@ async function observeMobile(
     if (!tools) return ctx.log('warn', 'Android SDK not found; behaviors stay unverified')
     const avd = process.env.MPF_ANDROID_AVD ?? (await listAvds(tools))[0] ?? 'mpf-api36'
     const emu = await ensureEmulator(tools, avd, (m) => ctx.log('info', m), ctx.signal)
+    if (emu.booted) rememberBootedDevice(ctx.run.runDir, { kind: 'emulator', id: emu.serial })
     device = emu.serial
-    stop = emu.stop
     install = () => installApk(tools, emu.serial, app.product)
     launch = () =>
       launchAndCheck(tools, emu.serial, app.appId, app.activity ? { activity: app.activity } : {})
@@ -368,7 +368,6 @@ async function observeMobile(
     if (!ctx.signal?.aborted) await afterFlows(device)
   } finally {
     await quit().catch(() => {})
-    await stop()
   }
 }
 

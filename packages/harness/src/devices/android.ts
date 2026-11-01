@@ -87,6 +87,8 @@ export async function listDevices(tools: AndroidTools): Promise<Device[]> {
 
 export interface EmulatorHandle {
   serial: string
+  /** True when this call booted the emulator (a run remembers those and stops them at its end). */
+  booted: boolean
   /** Stops the emulator only if this call started it. */
   stop(): Promise<void>
 }
@@ -120,7 +122,7 @@ export async function ensureEmulator(
   )
   if (online && (await booted(tools, online.serial))) {
     log(`using running emulator ${online.serial}`)
-    return { serial: online.serial, stop: async () => {} }
+    return { serial: online.serial, booted: false, stop: async () => {} }
   }
   const avds = await listAvds(tools)
   if (!avds.includes(avd)) {
@@ -201,6 +203,7 @@ export async function ensureEmulator(
   log(`emulator ${serial} booted`)
   return {
     serial,
+    booted: true,
     stop: async () => {
       await runProcess({
         command: tools.adb,

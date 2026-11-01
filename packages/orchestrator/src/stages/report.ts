@@ -12,6 +12,7 @@ import type {
 } from '@mpf/core'
 import { GoldenVectorSet } from '@mpf/core'
 import type { StageContext, StageOutcome, StageRunner } from '@mpf/harness'
+import { androidTools, releaseBootedDevices, rememberedDevices, xcodeTools } from '@mpf/harness'
 import {
   getTargetAdapter,
   type TargetAdapter,
@@ -578,6 +579,33 @@ function portMarkdown(input: {
  * architecture map, behavior coverage, deviations, the critic's verdict), a
  * report.json for the dashboard, and a one-line run summary. No LLM involved.
  */
+/**
+ * Stop the emulator or simulator this run booted, now that no stage needs a device. Devices found
+ * already running are never touched, nor is a lane another live process holds; `MPF_KEEP_DEVICES=1`
+ * keeps everything up (useful between back-to-back runs).
+ */
+async function releaseDevices(ctx: StageContext): Promise<void> {
+  if (!rememberedDevices(ctx.run.runDir).length) return
+  try {
+    const android = await androidTools(ctx.config, process.env)
+    const xcode = await xcodeTools(ctx.config, process.env)
+    const stopped = await releaseBootedDevices(ctx.run.runDir, {
+      keep: process.env.MPF_KEEP_DEVICES === '1',
+      heldByAnother: (lane) => ctx.lanes.heldByAnother(lane),
+      android: android ? { adb: android.adb, env: android.env } : undefined,
+      xcode: xcode ? { env: xcode.env } : undefined,
+      log: (m) => ctx.log('info', m),
+    })
+    if (stopped.length)
+      ctx.log(
+        'info',
+        `stopped the ${stopped.join(' and ')} this run booted (MPF_KEEP_DEVICES=1 keeps them)`,
+      )
+  } catch (err) {
+    ctx.log('warn', `could not release devices: ${(err as Error).message}`)
+  }
+}
+
 export function reportStage(deps: ReportDeps = {}): StageRunner {
   const adapterFor = deps.adapterFor ?? getTargetAdapter
   return {
@@ -708,6 +736,7 @@ export function reportStage(deps: ReportDeps = {}): StageRunner {
       writeFileSync(join(ctx.run.runDir, 'report.json'), JSON.stringify(json, null, 2))
       ctx.addArtifact({ kind: 'run-report', relPath: 'report.json', mime: 'application/json' })
       ctx.updateRun({ summary })
+      await releaseDevices(ctx)
       ctx.log(
         'info',
         reports.some((r) => r.readme)

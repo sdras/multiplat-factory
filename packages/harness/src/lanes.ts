@@ -1,6 +1,12 @@
 import PQueue from 'p-queue'
 import { join } from 'pathe'
-import { acquireLaneLock, laneLockPath, type LaneLockOptions } from './lanelock.ts'
+import { existsSync, readFileSync } from 'node:fs'
+import {
+  acquireLaneLock,
+  laneLockPath,
+  type LaneLockHolder,
+  type LaneLockOptions,
+} from './lanelock.ts'
 
 export type LaneName =
   'xcodebuild' | 'gradle' | 'simulator' | 'emulator' | 'web' | 'agent' | (string & {})
@@ -55,6 +61,20 @@ export class Lanes {
   lockPath(lane: LaneName): string | undefined {
     const dir = this.lockDir(lane)
     return dir ? laneLockPath(dir, lane) : undefined
+  }
+
+  /** The live holder of a lane's file lock when it is another process, else undefined. */
+  heldByAnother(lane: LaneName): LaneLockHolder | undefined {
+    const file = this.lockPath(lane)
+    if (!file || !existsSync(file)) return undefined
+    try {
+      const holder = JSON.parse(readFileSync(file, 'utf8')) as LaneLockHolder
+      if (!holder.pid || holder.pid === process.pid) return undefined
+      process.kill(holder.pid, 0)
+      return holder
+    } catch {
+      return undefined
+    }
   }
 
   run<T>(lane: LaneName, fn: () => Promise<T>): Promise<T> {

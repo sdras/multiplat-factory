@@ -12,6 +12,7 @@ import {
   stopApp,
   which,
   type AndroidTools,
+  rememberBootedDevice,
 } from '@mpf/harness'
 import type {
   BuildResult,
@@ -333,6 +334,7 @@ ${ctx.core ? `\n## Shared core\n${androidCoreConventions(ctx.core, project.packa
     mkdirSync(shotsDir, { recursive: true })
     const avd = ctx.env.MPF_ANDROID_AVD ?? (await listAvds(tools))[0] ?? 'mpf-api36'
     const emu = await ensureEmulator(tools, avd, ctx.log, ctx.signal)
+    if (emu.booted) rememberBootedDevice(ctx.run.runDir, { kind: 'emulator', id: emu.serial })
     const screenshots: E2eResult['screenshots'] = []
     try {
       ctx.log(`installing ${APK} on ${emu.serial}`)
@@ -454,8 +456,9 @@ ${ctx.core ? `\n## Shared core\n${androidCoreConventions(ctx.core, project.packa
       }
       return { launch: launchOutcome, flows: flowOutcome, screenshots }
     } finally {
+      // The emulator stays up for the rest of the run (the report stage stops what the run booted);
+      // stopping it here rebooted it for every phase and retry, two minutes each.
       await stopApp(tools, emu.serial, project.packageName).catch(() => {})
-      await emu.stop()
     }
   },
 }

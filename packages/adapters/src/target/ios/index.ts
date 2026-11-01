@@ -11,6 +11,7 @@ import {
   terminateApp,
   which,
   xcodeTools,
+  rememberBootedDevice,
 } from '@mpf/harness'
 import type {
   BuildResult,
@@ -247,6 +248,7 @@ ${ctx.core ? `\n## Shared core\n${iosCoreConventions(ctx.core)}\n` : ''}`
         summary: { total: 0, passed: 0, failed: 0, skipped: 0, flaky: 0 },
       }
     const sim = await ensureSimulator(tools, 'mpf-iphone', ctx.log, ctx.signal)
+    if (sim.booted) rememberBootedDevice(ctx.run.runDir, { kind: 'simulator', id: sim.udid })
     try {
       const r = await runProcess({
         command: 'xcodebuild',
@@ -282,7 +284,7 @@ ${ctx.core ? `\n## Shared core\n${iosCoreConventions(ctx.core)}\n` : ''}`
       }
       return parsed
     } finally {
-      await sim.stop()
+      // The simulator stays booted for the rest of the run; the report stage shuts down what the run booted.
     }
   },
 
@@ -359,6 +361,7 @@ ${ctx.core ? `\n## Shared core\n${iosCoreConventions(ctx.core)}\n` : ''}`
     const shotsDir = join(ctx.workspace, 'screenshots')
     mkdirSync(shotsDir, { recursive: true })
     const sim = await ensureSimulator(tools, 'mpf-iphone', ctx.log, ctx.signal)
+    if (sim.booted) rememberBootedDevice(ctx.run.runDir, { kind: 'simulator', id: sim.udid })
     // Maestro also clears a stale system dialog before each launch (see dismissSystemDialogs).
     const maestroForLaunch = await maestroTools(ctx.config, tools.env)
     const dismiss = maestroForLaunch ? { maestro: maestroForLaunch } : {}
@@ -483,7 +486,6 @@ ${ctx.core ? `\n## Shared core\n${iosCoreConventions(ctx.core)}\n` : ''}`
       return { launch: launchOutcome, flows: flowOutcome, screenshots }
     } finally {
       await terminateApp(tools, sim.udid, project.bundleId).catch(() => {})
-      await sim.stop()
     }
   },
 }

@@ -72,3 +72,10 @@ export {
   type StartDevServerOptions,
 } from './devserver.ts'
 export { rustTools, hasWasmTarget, type RustTools } from './toolchain/rust.ts'
+export {
+  rememberBootedDevice,
+  rememberedDevices,
+  releaseBootedDevices,
+  type BootedDevice,
+  type ReleaseOptions,
+} from './devices/remember.ts'

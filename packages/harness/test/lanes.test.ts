@@ -222,3 +222,28 @@ describe('Lanes without a data directory', () => {
     expect(order).toEqual(['a-start', 'a-end', 'b'])
   })
 })
+
+describe('Lanes.heldByAnother', () => {
+  it('names a live holder that is not this process and ignores dead or own locks', () => {
+    const dataDir = mkdtempSync(join(tmpdir(), 'mpf-lanes-'))
+    mkdirSync(join(dataDir, 'locks'), { recursive: true })
+    const lanes = new Lanes({}, { dataDir })
+    expect(lanes.heldByAnother('emulator')).toBeUndefined()
+    writeFileSync(
+      join(dataDir, 'locks', 'emulator.lock'),
+      JSON.stringify({ pid: process.ppid, since: new Date().toISOString(), lane: 'emulator' }),
+    )
+    expect(lanes.heldByAnother('emulator')?.pid).toBe(process.ppid)
+    writeFileSync(
+      join(dataDir, 'locks', 'emulator.lock'),
+      JSON.stringify({ pid: process.pid, since: new Date().toISOString(), lane: 'emulator' }),
+    )
+    expect(lanes.heldByAnother('emulator')).toBeUndefined()
+    writeFileSync(
+      join(dataDir, 'locks', 'emulator.lock'),
+      JSON.stringify({ pid: 999999999, since: new Date().toISOString(), lane: 'emulator' }),
+    )
+    expect(lanes.heldByAnother('emulator')).toBeUndefined()
+    expect(new Lanes().heldByAnother('emulator')).toBeUndefined()
+  })
+})

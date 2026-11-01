@@ -93,6 +93,8 @@ function compareVersions(a: string, b: string): number {
 
 export interface SimulatorHandle {
   udid: string
+  /** True when this call booted the simulator (a run remembers those and shuts them down at its end). */
+  booted: boolean
   /** Shuts the simulator down only if this call booted it. */
   stop(): Promise<void>
 }
@@ -109,7 +111,7 @@ export async function ensureSimulator(
   const booted = devices.find((d) => d.state === 'Booted' && /iphone/i.test(d.name))
   if (booted) {
     log(`using booted simulator ${booted.name} (${booted.udid})`)
-    return { udid: booted.udid, stop: async () => {} }
+    return { udid: booted.udid, booted: false, stop: async () => {} }
   }
   let device = devices.find((d) => d.name === name)
   if (!device) {
@@ -163,6 +165,7 @@ export async function ensureSimulator(
   const udid = device.udid
   return {
     udid,
+    booted: true,
     stop: async () => {
       await runProcess({
         command: 'xcrun',
