@@ -1,19 +1,20 @@
-# multiplat-factory
+# ⚙️ Multiplat Factory
 
-You have an app that runs on one platform: the web, iOS, or Android. You want it on the others. Point this tool at the app, name the platforms you want, and it builds working native apps for them, tests that they behave like the original, and writes up what it did.
+If you have an app that runs on one platform: the web, iOS, or Android, this Multiplat Factory will help you publish to the others. Point this tool at the app, name the platforms you want, and it builds working native apps for them, tests that they behave and look like the original, and writes up what it did. It even has design, annotation, and implementation, which can be useful for going from small screen to large.
 
-It runs on your own machine, uses your own Claude account, and never spends more than the budget you give it.
+It runs on your own machine, uses your own agent accounts, and you decide on the budget cap.
 
-## How it works, in plain terms
+## How it works
 
-The factory reads your app's code and works out what the app does: its screens, its controls, and the things a user can do with it (we call those **behaviors**). It then runs the original app and checks each behavior really works there, so it knows what "correct" looks like. Next it plans the port, and Claude writes the code for each new platform. The factory builds that code, installs it on a simulator or emulator or in a browser, and runs the same behaviors against it. Failures go back to Claude to fix, a limited number of times. A second, independent Claude session reviews the finished port and scores it. Finally a `PORT.md` file per platform records what shipped, what passed, what failed, and what you chose to accept.
+The factory reads your app's code and works out what the app does: its screens, its controls, and the things a user can do with it (we call those **behaviors**). It then runs the original app and checks each behavior really works there, so it will infer what "correct" looks like. Next it plans the port, and Claude writes the code for each new platform. The factory builds that code, installs it on a simulator or emulator or in a browser, and runs the same behaviors against it. You can speak directly to the agent within the run as well.
 
-Two things make this trustworthy rather than hopeful:
+Failures go back to the agent to fix, a limited number of times. A second, independent agent session reviews the finished port and scores it. Finally a `PORT.md` file per platform records what shipped, what passed, what failed, and what you chose to accept.
 
-- **Claude never decides what happens next.** The order of steps, the retry limits, the budget, and the pass or fail decisions are fixed code. Claude only writes files.
-- **Everything is checked against the real app.** Behaviors are verified on the original before anything is written, and the ports are tested with real taps and clicks on real devices.
+There are a couple of design principles:
 
-When your app has a good amount of logic that is not user interface (pricing rules, validation, data handling), the factory can pull that logic out into one **shared core**: a small Rust program compiled to WebAssembly that runs unchanged on web, iOS, and Android. It records the original app's real outputs for many inputs and checks the core gives the same answers on every platform.
+- **An agent never decides what happens next.** The order of steps, the retry limits, the budget, and the pass or fail decisions are fixed code. The agent only writes files.
+- **Everything is checked against the real app.** Behaviors are verified on the original before anything is written, and the ports are tested with real behaviors.
+- **Leverage WASM for Portability** When your app has a good amount of logic that is not user interface (pricing rules, validation, data handling), the factory can pull that logic out into one **shared core**: a small Rust program compiled to WebAssembly that runs unchanged on web, iOS, and Android. It records the original app's real outputs for many inputs and checks the core gives the same answers on every platform.
 
 A dashboard in your browser shows all of this live: where a run is, what it is spending, what is failing, and when it needs a decision from you.
 
@@ -25,21 +26,7 @@ A dashboard in your browser shows all of this live: where a run is, what it is s
 | iOS            | Xcode projects and workspaces, XcodeGen `project.yml` files, Swift packages. Swift or Objective-C. UIKit or SwiftUI. | A SwiftUI app, built and tested on the iPhone simulator                                       |
 | Android        | Gradle projects. Kotlin or Java. Views or Jetpack Compose. Multi-module and flavored builds are fine.                | A Jetpack Compose app, built and tested on a headless emulator                                |
 
-Apps built with a cross-platform framework (React Native, Flutter, Capacitor) are recognized and turned down with a message saying why. The iOS output is iPhone only for now.
-
-## What you need
-
-- **Node 22.13 or newer.** The repo's `.nvmrc` asks for 24, so run `nvm use` in a source checkout. On an older Node, `pnpm` itself can fail before anything starts with the error `Cannot find matching keyid`. That is the old Corepack shim; switching Node fixes it.
-- **A way to use Claude.** Either set `ANTHROPIC_API_KEY`, or log in to Claude Code on this machine (`claude`, then `/login`). Every call goes through your account and every run has a spending cap.
-- **The build tools for the platforms you want.** `mpf doctor` lists what is present and says exactly what each missing tool disables. `mpf setup` installs the missing ones. In short:
-  - Web needs Playwright's Chromium, so the factory can watch the original app run.
-  - Android needs a JDK between 17 and 24, the Android SDK with an emulator and an `android-36` system image, Gradle, and Maestro (the tool that taps and types on mobile devices).
-  - iOS needs macOS with Xcode, an iOS simulator, XcodeGen, and Maestro.
-  - A shared core needs Rust with the `wasm32-unknown-unknown` target.
-
-  A platform whose tools are missing is skipped, and the run says so.
-
-iOS output can only be built on macOS. Web and Android output can be built on macOS or Linux.
+_Apps already built with a cross-platform framework (React Native, Flutter, Capacitor) are not supported_
 
 ## Install
 
@@ -67,7 +54,7 @@ pnpm install
 pnpm mpf doctor
 ```
 
-## Your first port, step by step
+## Step by step instructions
 
 1. **Check the machine.** `mpf doctor` prints one line per tool and says which platforms this machine can build for. `mpf doctor --json` prints the same report as JSON.
 2. **Install what is missing.** `mpf setup` walks through the gaps doctor found and asks before running each install command (Homebrew on macOS, apt on Linux, winget on Windows). Anything that needs `sudo` runs only after you confirm that exact command. `mpf setup --yes` accepts every command that does not need sudo and prints the rest for you to run yourself. `mpf setup --dry-run` shows what would run and stops.
@@ -108,6 +95,20 @@ Options for `mpf port`:
 - `--fake`: run the rehearsal pipeline with no Claude calls and no build tools.
 
 A run's stages, in order (use these names for `--until` and in stage ids): `ingest`, `inventory`, `spec`, `behaviors`, `observe`, `plan`, `core.extract`, `core.vectors`, `core.build`, then for each platform `generate`, `build`, `test`, `critique`, `fix`, and finally `report`.
+
+## What you need
+
+- **Node 22.13 or newer.** The repo's `.nvmrc` asks for 24, so run `nvm use` in a source checkout. On an older Node, `pnpm` itself can fail before anything starts with the error `Cannot find matching keyid`. That is the old Corepack shim; switching Node fixes it.
+- **A way to use agents.** Either set `ANTHROPIC_API_KEY`, or log in to Claude Code on this machine (`claude`, then `/login`). Every call goes through your account and every run has a spending cap.
+- **The build tools for the platforms you want.** `mpf doctor` lists what is present. `mpf setup` installs missing build tools. In short:
+  - Web needs Playwright's Chromium, so the factory can watch the original app run.
+  - Android needs a JDK between 17 and 24, the Android SDK with an emulator and an `android-36` system image, Gradle, and Maestro (the tool that taps and types on mobile devices).
+  - iOS needs macOS with Xcode, an iOS simulator, XcodeGen, and Maestro.
+  - A shared core needs Rust with the `wasm32-unknown-unknown` target.
+
+  A platform whose tools are missing is skipped, and the run explain this.
+
+iOS output can only be built on macOS. Web and Android output can be built on macOS or Linux.
 
 ## Pauses, budgets, and stopping early
 
@@ -199,7 +200,7 @@ Environment variables:
 - `MPF_KEEP_DEVICES=1`: leave the emulator or simulator running after a run that started it
 - `PLAYWRIGHT_BROWSERS_PATH`: where Playwright keeps its browsers
 
-## What a run does, stage by stage
+## Run stages
 
 1. `ingest` copies the app and works out its platform and framework.
 2. `inventory` parses the code and collects the test ids the app already has, so tests can find its controls.
