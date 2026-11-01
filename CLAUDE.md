@@ -5,7 +5,7 @@ Port an app from one platform (web, iOS, Android) to the others, producing fully
 ## Commands
 
 - `pnpm install` (Node >= 22.13; `.nvmrc` says 24)
-- `pnpm dev` — server (4310) + dashboard (4311)
+- `pnpm mpf serve` — the API daemon (4310); `pnpm dev` — the dashboard with hot reload (4311, IPv6 localhost, proxies `/api` to 4310)
 - `pnpm test` — vitest across all packages; tests tagged by toolchain skip when the toolchain is absent
 - `pnpm typecheck`, `pnpm lint`, `pnpm format`
 - `pnpm mpf <cmd>` — run the CLI from source: `doctor`, `setup [--yes|--dry-run]` (installs what doctor reports, asking per step), `serve`, `port <src> --to ios,android [--budget <usd>] [--core auto|always|never] [--until <stage>] [--detach] [--yes] [--web-framework <flavor>]`, `runs`, `status <run>`, `resume|rerun|answer|instruct`

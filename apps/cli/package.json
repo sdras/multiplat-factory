@@ -19,10 +19,10 @@
   },
   "repository": {
     "type": "git",
-    "url": "https://github.com/sdras/multiplatform-factory.git",
+    "url": "https://github.com/sdras/multiplat-factory.git",
     "directory": "apps/cli"
   },
-  "homepage": "https://github.com/sdras/multiplatform-factory#readme",
+  "homepage": "https://github.com/sdras/multiplat-factory#readme",
   "keywords": [
     "port",
     "ios",

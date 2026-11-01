@@ -56,8 +56,8 @@ mpf doctor
 From source, every `mpf` command runs as `pnpm mpf <command>`:
 
 ```bash
-git clone https://github.com/sdras/multiplatform-factory.git
-cd multiplatform-factory
+git clone https://github.com/sdras/multiplat-factory.git
+cd multiplat-factory
 nvm use
 pnpm install
 pnpm mpf doctor
@@ -114,7 +114,7 @@ Pages: the runs list (`/`), the new-run wizard (`/runs/new`), and per run the ov
 
 The dashboard also carries project review tools: a chat about a project that can propose revisions, a design review that produces three concept mockups to choose from, annotation of recorded screenshots with pins and notes, and a release checklist. Applying a proposal creates a new version of the project and reruns the affected stages. These actions are also exposed to browser agents as WebMCP tools on the page. `docs/PROJECT-REVIEW.md` describes all of it, and `pnpm tsx scripts/review-demo.ts <screenshot.png> <port>` runs a demo against a throwaway database. The "Host on Netlify" card on the release page is for the generated web app, not for the factory.
 
-For development, `pnpm dev` runs the API on 4310 and the dashboard with hot reload on 4311.
+For development, run the API with `pnpm mpf serve` on 4310 and the dashboard with `pnpm dev`, which serves it with hot reload on 4311 and proxies `/api` to the daemon. Open it as `http://localhost:4311`; the dev server binds IPv6 localhost, so `127.0.0.1` does not answer.
 
 ## Where data lives
 
@@ -180,7 +180,8 @@ Devices are managed for you: the harness boots a headless emulator or an iPhone 
 ```bash
 nvm use
 pnpm install
-pnpm dev            # API on 4310, dashboard with hot reload on 4311
+pnpm mpf serve      # the API daemon on 4310 (also serves a built dashboard, if any)
+pnpm dev            # the dashboard with hot reload on http://localhost:4311, proxying /api to 4310
 pnpm test           # vitest across every package; tests tagged by toolchain skip when it is absent
 pnpm typecheck
 pnpm lint

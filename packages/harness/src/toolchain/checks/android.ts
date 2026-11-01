@@ -125,7 +125,27 @@ export const javaCheck: CheckFn = async (ctx) => {
 }
 
 /** `java -version` prints to stderr. */
-async function javaVersionLine(bin: string, env: NodeJS.ProcessEnv): Promise<string | undefined> {
+/**
+ * `java -version` per binary, remembered for the process: a JDK's version does not change while
+ * the factory runs, and the doctor, every Gradle resolution, and the core workers' tool env each
+ * scan the same homes (GitHub's Linux runners carry four Temurin JDKs, and three scans in a row
+ * took the drop-in test past vitest's 5 s default).
+ */
+const versionLines = new Map<string, Promise<string | undefined>>()
+
+function javaVersionLine(bin: string, env: NodeJS.ProcessEnv): Promise<string | undefined> {
+  let pending = versionLines.get(bin)
+  if (!pending) {
+    pending = readJavaVersionLine(bin, env)
+    versionLines.set(bin, pending)
+  }
+  return pending
+}
+
+async function readJavaVersionLine(
+  bin: string,
+  env: NodeJS.ProcessEnv,
+): Promise<string | undefined> {
   const { runProcess } = await import('../../exec.ts')
   try {
     const r = await runProcess({ command: bin, args: ['-version'], env, timeoutMs: 15_000 })

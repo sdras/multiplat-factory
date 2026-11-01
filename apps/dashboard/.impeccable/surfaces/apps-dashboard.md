@@ -1,7 +1,7 @@
 ---
 version: 1
-slug: "apps-dashboard"
-primary_target: "apps/dashboard"
+slug: 'apps-dashboard'
+primary_target: 'apps/dashboard'
 related_targets: []
 ---
 

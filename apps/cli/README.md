@@ -80,4 +80,4 @@ variables override the file: `MPF_HOME`, `MPF_PORT`, `MPF_HOST`, `MPF_BUDGET_USD
 the devices a run booted running).
 
 Source code, the full guide with troubleshooting, the architecture, and the adapter interface for
-adding frameworks: https://github.com/sdras/multiplatform-factory
+adding frameworks: https://github.com/sdras/multiplat-factory

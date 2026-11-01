@@ -36,5 +36,5 @@ describe.skipIf(process.platform === 'win32')('JDKs dropped under the run home',
     // Linux runners ship Temurin 8 to 21), so pin the range to the drop-in's major: within one
     // major the drop-in is found first.
     expect((await resolveJava(ctx, { min: 17, max: 17 }))?.home).toBe(seventeen)
-  })
+  }, 60_000)
 })
