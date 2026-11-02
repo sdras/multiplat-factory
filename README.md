@@ -38,8 +38,6 @@ _Apps already built with a cross-platform framework (React Native, Flutter, Capa
 
 ## Install
 
-The package is not on npm yet. Once it is:
-
 ```bash
 npm i -g multiplat-factory
 mpf doctor
