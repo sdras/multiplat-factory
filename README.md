@@ -1,9 +1,15 @@
 # ⚙️ Multiplat Factory
 
-If you have an app that runs on one platform: the web, iOS, or Android, this Multiplat Factory will help you publish to the others. Point this tool at the app, name the platforms you want, and it builds working native apps for them, tests that they behave and look like the original, and writes up what it did. It even has design, annotation, and implementation, which can be useful for going from small screen to large.
+If you have an app that runs on one platform: the web, iOS, or Android, this Multiplat Factory will help you publish to the others. Point this tool at the app, name the platforms you want, and it builds working native apps for them, tests that they behave and look like the original, and writes up what it did. It even has design, annotation, and implementation, which can be useful for going from small screen to large. It runs on your own machine, uses your own agent accounts, and you decide on the budget cap.
 
-It runs on your own machine, uses your own agent accounts, and you decide on the budget cap.
+### Try it out
 
+```
+npm i -g multiplat-factory
+mpf serve
+```
+
+### Preview
 https://github.com/user-attachments/assets/145f78c3-7b22-4a36-b986-779a44c52e98
 
 ## How it works
