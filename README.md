@@ -266,16 +266,17 @@ To add a platform or framework, implement `SourceAdapter` or `TargetAdapter` fro
 
 ## Releasing and publishing
 
-The published package is `multiplat-factory`. It is built from `apps/cli`, with every `@mpf/*` package bundled in and the static dashboard copied next to it. Its npm page is `apps/cli/README.md`.
+The published package is `multiplat-factory`. It is built from `apps/cli`, with every `@mpf/*` package bundled in and the static dashboard copied next to it. Its npm page is `apps/cli/README.md`. The monorepo root has the same name but is not the package; `npm publish` from the root prints a reminder and stops.
 
-1. Bump the version in `apps/cli/package.json`. The CLI reads it from there at run time, so that is the only place it lives.
-2. Build and pack: `pnpm tsx scripts/release.ts`. It builds the dashboard, bundles the CLI, runs `mpf --help` from the bundle, and packs the tarball into `dist-release/`. It prints the tarball's contents (about 1.2 MB, with source maps).
-3. Try the tarball in a clean project: `mkdir /tmp/try && cd /tmp/try && npm init -y && npm i <repo>/dist-release/multiplat-factory-<version>.tgz && npx mpf doctor && npx mpf serve`.
-4. Log in to npm with `npm login` and confirm it with `npm whoami`. The name `multiplat-factory` is unscoped, so no organization is needed.
-5. Publish: `pnpm tsx scripts/release.ts --publish`. It rebuilds, then runs `pnpm publish --access public --no-git-checks` from `apps/cli`. With two-factor auth on, npm asks for a one-time code.
-6. Check from another machine: `npm view multiplat-factory version` and `npx multiplat-factory doctor`.
+A release is three steps:
 
-The package metadata and this README link to the GitHub repository. Make it public before publishing, or expect dead links.
+1. **Bump the version** in `apps/cli/package.json`. That is the version npm gets; the CLI reads it from there at run time.
+2. **Add a section to `CHANGELOG.md`** headed `## [<version>] - <date>` with what changed. The release script refuses to publish a version that has no section.
+3. **Run `pnpm release`.** It builds the dashboard, bundles the CLI, runs `mpf --help` from the bundle, packs the tarball into `dist-release/`, lists its contents, and publishes that tarball with `npm publish`. npm asks for your two-factor code in the terminal.
+
+Then check from another machine with `npm view multiplat-factory version` and `npx multiplat-factory doctor`.
+
+To build and inspect without publishing, run `pnpm tsx scripts/release.ts`; it stops after packing and prints an `npm i -g` line for trying the tarball locally. A version number can never be reused on npm, so a bad release gets a deprecation notice (`npm deprecate multiplat-factory@<version> "<reason>"`) and a fixed version right after it.
 
 ## Layout
 

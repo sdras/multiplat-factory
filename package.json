@@ -19,7 +19,9 @@
     "format:check": "prettier --check .",
     "mpf": "tsx apps/cli/src/main.ts",
     "doctor": "tsx apps/cli/src/main.ts doctor",
-    "fixtures:sync": "tsx scripts/fixtures-sync.ts"
+    "fixtures:sync": "tsx scripts/fixtures-sync.ts",
+    "release": "tsx scripts/release.ts --publish",
+    "prepublishOnly": "echo \"This is the monorepo root, not the package. Run: pnpm release\" && exit 1"
   },
   "devDependencies": {
     "@mpf/adapters": "workspace:*",
