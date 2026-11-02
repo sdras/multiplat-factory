@@ -61,6 +61,7 @@
   "devDependencies": {
     "@mpf/core": "workspace:*",
     "@mpf/harness": "workspace:*",
+    "@mpf/llm": "workspace:*",
     "@mpf/orchestrator": "workspace:*",
     "@mpf/server": "workspace:*",
     "tsup": "catalog:",

@@ -10,6 +10,7 @@ import {
   WRITE_BASH,
   readSessionLedger,
   runWorker,
+  workerFailure,
   type AgentFn,
 } from '../src/worker.ts'
 
@@ -147,5 +148,138 @@ describe('WRITE_BASH', () => {
     expect(ok('rmdir /tmp/x')).toBe(false)
     expect(ok("sed -i '' 's|a|b|' src/api/mod.rs")).toBe(true)
     expect(ok('rm -rf /')).toBe(false)
+  })
+})
+
+describe('runWorker read-only stages', () => {
+  it('denies the write tools for analysis and critique workers and leaves generation alone', async () => {
+    const runDir = mkdtempSync(join(tmpdir(), 'mpf-worker-ro-'))
+    const seen: Array<{ kind: string; tools?: string[]; deny?: string[] }> = []
+    const agent: AgentFn = async (o) => {
+      seen.push({ kind: seen.length.toString(), tools: o.tools, deny: o.policy?.denyTools })
+      return result(0.1, 'sess-ro')
+    }
+    const base = {
+      role: 'generate' as const,
+      budgetShare: 0.1,
+      cwd: runDir,
+      systemPrompt: 's',
+      prompt: 'p',
+    }
+    for (const kind of ['spec', 'behaviors', 'plan', 'critique', 'generate', 'fix'] as const) {
+      const ctx = contextFor(runDir)
+      ctx.stage.kind = kind
+      await runWorker(ctx, base, agent)
+    }
+    const [spec, behaviors, plan, critique, generate, fix] = seen
+    for (const ro of [spec, behaviors, plan, critique]) {
+      expect(ro?.tools).toEqual(['Read', 'Glob', 'Grep', 'Bash'])
+      expect(ro?.deny).toEqual(expect.arrayContaining(['Write', 'Edit', 'MultiEdit', 'WebFetch']))
+    }
+    expect(generate?.tools).toBeUndefined()
+    expect(generate?.deny).toBeUndefined()
+    expect(fix?.tools).toBeUndefined()
+
+    const ctx = contextFor(runDir)
+    ctx.stage.kind = 'spec'
+    await runWorker(ctx, { ...base, readOnly: false }, agent)
+    expect(seen.at(-1)?.tools).toBeUndefined()
+  })
+})
+
+describe('runWorker model check', () => {
+  const base = {
+    role: 'generate' as const,
+    budgetShare: 0.1,
+    systemPrompt: 's',
+    prompt: 'p',
+  }
+  function localContext(runDir: string, model: string, probeSetting = true): StageContext {
+    const ctx = contextFor(runDir)
+    ctx.run.options.llm = { ...ctx.run.options.llm, provider: 'ollama', probe: probeSetting }
+    ctx.run.options.models = { generate: model, critic: model, cheap: model }
+    return ctx
+  }
+  const probeResult = (level: 'ok' | 'error', reasons: string[] = []) => ({
+    model: 'x',
+    role: 'generate' as const,
+    level,
+    reasons,
+    toolUse: level === 'ok',
+    structured: level === 'ok',
+    turns: 3,
+    durationMs: 10,
+    costUsd: 0.05,
+    probedAt: 'now',
+  })
+
+  it('refuses an unsuitable model before the worker runs, as a non-retryable failure', async () => {
+    const runDir = mkdtempSync(join(tmpdir(), 'mpf-worker-probe-'))
+    let agentCalls = 0
+    const agent: AgentFn = async () => {
+      agentCalls++
+      return result(0.1, 'sess')
+    }
+    const charged: number[] = []
+    const ctx = localContext(runDir, 'local-coder')
+    ctx.chargeCost = (usd) => {
+      charged.push(usd)
+    }
+    const r = await runWorker(ctx, { ...base, cwd: runDir }, agent, async () =>
+      probeResult('error', ['too weak for the task']),
+    )
+    expect(r.ok).toBe(false)
+    expect(r.error).toBe('model unsuitable: too weak for the task')
+    expect(agentCalls).toBe(0)
+    expect(charged).toEqual([0.05])
+    const failure = workerFailure(r, 'fallback')
+    expect(failure.error.class).toBe('model-unsuitable')
+    expect(failure.retryable).toBe(false)
+  })
+
+  it('probes a model once per run and then lets workers through', async () => {
+    const runDir = mkdtempSync(join(tmpdir(), 'mpf-worker-probe-'))
+    let agentCalls = 0
+    let probeCalls = 0
+    const agent: AgentFn = async () => {
+      agentCalls++
+      return result(0.1, 'sess')
+    }
+    const probe = async () => {
+      probeCalls++
+      return probeResult('ok')
+    }
+    const ctx = localContext(runDir, 'local-coder')
+    await runWorker(ctx, { ...base, cwd: runDir }, agent, probe)
+    await runWorker(ctx, { ...base, cwd: runDir }, agent, probe)
+    expect(agentCalls).toBe(2)
+    expect(probeCalls).toBe(1)
+    expect(readFileSync(join(runDir, 'model-probe.json'), 'utf8')).toContain('"local-coder"')
+  })
+
+  it('skips the probe for frontier tiers and when llm.probe is false', async () => {
+    const runDir = mkdtempSync(join(tmpdir(), 'mpf-worker-probe-'))
+    let probeCalls = 0
+    const probe = async () => {
+      probeCalls++
+      return probeResult('ok')
+    }
+    const agent: AgentFn = async () => result(0.1, 'sess')
+    await runWorker(localContext(runDir, 'gpt-5.1'), { ...base, cwd: runDir }, agent, probe)
+    const small = await runWorker(
+      localContext(runDir, 'qwen2.5-coder:7b', false),
+      { ...base, cwd: runDir },
+      agent,
+      probe,
+    )
+    expect(probeCalls).toBe(0)
+    expect(small.ok).toBe(true)
+    const refused = await runWorker(
+      localContext(runDir, 'qwen2.5-coder:7b'),
+      { ...base, cwd: runDir },
+      agent,
+      async () => probeResult('error', ['7B is too small']),
+    )
+    expect(refused.error).toMatch(/^model unsuitable: 7B is too small/)
   })
 })

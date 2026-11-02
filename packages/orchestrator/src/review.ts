@@ -374,6 +374,7 @@ export class ProjectReview {
         reserved = true
         const result = await (this.deps.agent ?? runAgent)({
           cwd: run.runDir,
+          llm: run.options.llm,
           model: run.options.models.cheap,
           effort: 'medium',
           maxTurns: 8,

@@ -17,6 +17,9 @@ import {
   type RunEventBus,
   type RunStore,
   type Stage,
+  LlmSettings,
+  defaultModelsFor,
+  resolveLlm,
 } from '@mpf/core'
 import {
   Lanes,
@@ -101,10 +104,28 @@ export class Orchestrator {
     const parsed = CreateRunInput.parse(input)
     const id = newId()
     const ts = nowIso()
+    // The provider comes from the config unless the request names one; its default models fill
+    // the roles the config and the request leave unset.
+    const llm = LlmSettings.parse({
+      ...this.opts.config.llm,
+      ...definedEntries(parsed.options?.llm ?? {}),
+    })
+    const resolved = resolveLlm(llm)
+    const models = {
+      ...defaultModelsFor(resolved),
+      ...definedEntries(this.opts.config.models),
+      ...definedEntries(parsed.options?.models ?? {}),
+    }
+    const unset = (['generate', 'critic', 'cheap'] as const).filter((role) => !models[role])
+    if (unset.length)
+      throw new Error(
+        `${resolved.label} has no default model for ${unset.join(', ')}: set models.${unset[0]} in ~/.mpf/config.json (or MPF_MODEL_${unset[0]!.toUpperCase()})`,
+      )
     const options = RunOptions.parse({
       ...parsed.options,
       budgetUsd: parsed.options?.budgetUsd ?? this.opts.config.budget.defaultUsd,
-      models: { ...this.opts.config.models, ...parsed.options?.models },
+      models,
+      llm,
     })
     const dir = runDirFor(id, this.opts.dataDir)
     const run = Run.parse({
@@ -698,4 +719,8 @@ function directorySize(dir: string, budget = { entries: 5000 }): number {
 
 function round(n: number): number {
   return Math.round(n * 1_000_000) / 1_000_000
+}
+
+function definedEntries<T extends Record<string, unknown>>(obj: T): Partial<T> {
+  return Object.fromEntries(Object.entries(obj).filter(([, v]) => v !== undefined)) as Partial<T>
 }

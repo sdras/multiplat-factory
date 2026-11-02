@@ -5,7 +5,7 @@
  *   MPF_HOME=... pnpm tsx scripts/run-control.ts <runId> rerun <stageId> [--approve] [--until <stage>]
  *   MPF_HOME=... pnpm tsx scripts/run-control.ts <runId> answer <stageId> <choice> [note]
  *   MPF_HOME=... pnpm tsx scripts/run-control.ts <runId> status
- *   MPF_HOME=... pnpm tsx scripts/run-control.ts new <source> --to ios,android [--until <stage>] [--budget <usd>] [--core auto|always|never] [--yes]
+ *   MPF_HOME=... pnpm tsx scripts/run-control.ts new <source> --to ios,android [--until <stage>] [--budget <usd>] [--core auto|always|never] [--provider <name>] [--model <id>] [--base-url <url>] [--yes]
  */
 import { RunEventBus, SqliteRunStore, dbPath, loadConfig, mpfHome, type Event } from '@mpf/core'
 import { Orchestrator, realRegistry } from '@mpf/orchestrator'
@@ -25,7 +25,7 @@ const flag = (name: string) => {
 }
 const approve = rest.includes('--approve')
 const until = flag('--until')
-const VALUE_FLAGS = ['--until', '--to', '--budget', '--core']
+const VALUE_FLAGS = ['--until', '--to', '--budget', '--core', '--provider', '--model', '--base-url']
 const positional = rest.filter(
   (a, i) => !a.startsWith('--') && !VALUE_FLAGS.includes(rest[i - 1] ?? ''),
 )
@@ -68,6 +68,17 @@ if (creating) {
     options: {
       ...(budget ? { budgetUsd: Number(budget) } : {}),
       ...(flag('--core') ? { coreMode: flag('--core') as 'auto' | 'always' | 'never' } : {}),
+      ...(flag('--provider') || flag('--base-url')
+        ? {
+            llm: {
+              ...(flag('--provider') ? { provider: flag('--provider') as 'openai' } : {}),
+              ...(flag('--base-url') ? { baseUrl: flag('--base-url') } : {}),
+            },
+          }
+        : {}),
+      ...(flag('--model')
+        ? { models: { generate: flag('--model'), critic: flag('--model') } }
+        : {}),
       ...(rest.includes('--yes')
         ? { checkpoints: { planApproval: false, beforeFixLoop: false } }
         : {}),

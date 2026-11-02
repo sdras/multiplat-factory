@@ -31,9 +31,12 @@ describe('deriveTargets / deriveLlm', () => {
     expect(deriveTargets([...checks.slice(0, 2), base('xcode', 'missing')])).toEqual(['web'])
   })
 
-  it('picks the llm backend from the credential check', () => {
+  it('picks the llm backend from the model-access check', () => {
     expect(deriveLlm([base('llm', 'ok', 'messages')])).toBe('messages')
     expect(deriveLlm([base('llm', 'ok', 'agent-sdk')])).toBe('agent-sdk')
+    expect(deriveLlm([base('llm', 'ok', 'openai-compatible')])).toBe('openai-compatible')
+    expect(deriveLlm([base('llm', 'warn', 'openai-compatible')])).toBe('openai-compatible')
+    expect(deriveLlm([base('llm', 'missing', 'openai-compatible')])).toBe('none')
     expect(deriveLlm([base('llm', 'missing', 'none')])).toBe('none')
     expect(deriveLlm([])).toBe('none')
   })
@@ -50,6 +53,36 @@ describe('runDoctor', () => {
     expect(report.checks).toHaveLength(2)
     expect(report.checks[1]?.status).toBe('warn')
     expect(report.host.node).toBe(process.versions.node)
+  })
+
+  it('hands every check the config llm settings and model overrides, with fetch left to the default', async () => {
+    const config = MpfConfig.parse({
+      llm: { provider: 'openai', headers: { 'X-Test': 'yes' } },
+      models: { cheap: 'gpt-5-nano' },
+    })
+    const report = await runDoctor(config, {}, [
+      async (ctx) => ({
+        id: 'stub',
+        label: 'stub',
+        status: 'ok',
+        detail: JSON.stringify({
+          llm: ctx.llm,
+          models: ctx.models,
+          fetch: ctx.fetch === undefined,
+        }),
+        affects: [],
+      }),
+    ])
+    const seen = JSON.parse(report.checks[0]!.detail) as {
+      llm: MpfConfig['llm']
+      models: MpfConfig['models']
+      fetch: boolean
+    }
+    expect(seen.llm).toEqual(config.llm)
+    expect(seen.llm.provider).toBe('openai')
+    expect(seen.llm.headers).toEqual({ 'X-Test': 'yes' })
+    expect(seen.models).toEqual({ cheap: 'gpt-5-nano' })
+    expect(seen.fetch).toBe(true)
   })
 })
 

@@ -32,7 +32,13 @@ export async function runDoctor(
   env: NodeJS.ProcessEnv = process.env,
   checks: CheckFn[] = ALL_CHECKS,
 ): Promise<ToolchainReport> {
-  const ctx: CheckContext = { env, platform: process.platform, toolchain: config.toolchain }
+  const ctx: CheckContext = {
+    env,
+    platform: process.platform,
+    toolchain: config.toolchain,
+    llm: config.llm,
+    models: config.models,
+  }
   const results = await Promise.all(
     checks.map(async (c) => {
       try {
@@ -80,5 +86,6 @@ export function deriveLlm(checks: ToolchainCheck[]): ToolchainReport['llmBackend
   const c = byId(checks, 'llm')
   if (!c || c.status === 'missing') return 'none'
   if (c.version === 'messages') return 'messages'
+  if (c.version === 'openai-compatible') return 'openai-compatible'
   return 'agent-sdk'
 }

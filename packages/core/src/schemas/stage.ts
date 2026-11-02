@@ -58,6 +58,7 @@ export const StageError = z.object({
     'test-failure',
     'budget-exhausted',
     'llm-error',
+    'model-unsuitable',
     'rate-limit',
     'human-needed',
     'timeout',

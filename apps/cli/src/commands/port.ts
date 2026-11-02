@@ -13,6 +13,23 @@ export const portCommand = defineCommand({
     },
     to: { type: 'string', description: 'Comma-separated targets: web,ios,android', required: true },
     budget: { type: 'string', description: 'Budget cap in USD' },
+    provider: {
+      type: 'string',
+      description:
+        'Model provider: anthropic | openai | gemini | ollama | openrouter | custom (default: the config, else whatever has credentials)',
+    },
+    model: {
+      type: 'string',
+      description: 'Model for generation and review (overrides the config)',
+    },
+    'cheap-model': {
+      type: 'string',
+      description: 'Model for small tasks such as the project chat',
+    },
+    'base-url': {
+      type: 'string',
+      description: 'Chat-completions URL of a custom or self-hosted server',
+    },
     core: { type: 'string', description: 'Shared WASM core: auto | always | never' },
     yes: { type: 'boolean', description: 'Skip human checkpoints (auto-approve the plan)' },
     fake: {
@@ -46,6 +63,22 @@ export const portCommand = defineCommand({
           targets,
           options: {
             ...(args.budget ? { budgetUsd: Number(args.budget) } : {}),
+            ...(args.provider || args['base-url']
+              ? {
+                  llm: {
+                    ...(args.provider ? { provider: args.provider } : {}),
+                    ...(args['base-url'] ? { baseUrl: args['base-url'] } : {}),
+                  },
+                }
+              : {}),
+            ...(args.model || args['cheap-model']
+              ? {
+                  models: {
+                    ...(args.model ? { generate: args.model, critic: args.model } : {}),
+                    ...(args['cheap-model'] ? { cheap: args['cheap-model'] } : {}),
+                  },
+                }
+              : {}),
             ...(args.core ? { coreMode: args.core } : {}),
             ...(args.yes ? { checkpoints: { planApproval: false, beforeFixLoop: false } } : {}),
             ...(args.until ? { until: args.until } : {}),

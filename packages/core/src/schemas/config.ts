@@ -1,10 +1,12 @@
 import { z } from 'zod'
-import { Effort, ModelConfig } from './run.ts'
+import { LlmSettings } from './llm.ts'
+import { Effort, ModelOverrides } from './run.ts'
 
 /** User-level configuration (~/.mpf/config.json, mpf.config.ts, env). */
 export const MpfConfig = z.object({
   dataDir: z.string().optional().describe('Overrides the default ~/.mpf'),
-  models: ModelConfig.prefault({}),
+  models: ModelOverrides.prefault({}),
+  llm: LlmSettings.prefault({}),
   effort: z
     .object({ generate: Effort.default('xhigh'), critic: Effort.default('high') })
     .prefault({}),

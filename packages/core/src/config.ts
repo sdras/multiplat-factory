@@ -8,6 +8,8 @@ import { mpfHome } from './paths.ts'
 /**
  * Layered config: defaults <- ~/.mpf/config.json <- ./mpf.config.{ts,js,json} <- env.
  * Env: MPF_MODEL_GENERATE, MPF_MODEL_CRITIC, MPF_MODEL_CHEAP, MPF_BUDGET_USD, MPF_PORT,
+ *      MPF_LLM_PROVIDER, MPF_LLM_BASE_URL, MPF_LLM_API_KEY_ENV (the key itself stays in its own
+ *      variable: OPENAI_API_KEY, GEMINI_API_KEY, … or MPF_LLM_API_KEY),
  *      ANDROID_HOME / ANDROID_SDK_ROOT, JAVA_HOME, DEVELOPER_DIR.
  */
 export async function loadConfig(cwd = process.cwd(), env = process.env): Promise<MpfConfig> {
@@ -28,6 +30,11 @@ export async function loadConfig(cwd = process.cwd(), env = process.env): Promis
       generate: env.MPF_MODEL_GENERATE,
       critic: env.MPF_MODEL_CRITIC,
       cheap: env.MPF_MODEL_CHEAP,
+    }),
+    llm: compact({
+      provider: env.MPF_LLM_PROVIDER,
+      baseUrl: env.MPF_LLM_BASE_URL,
+      apiKeyEnv: env.MPF_LLM_API_KEY_ENV,
     }),
     budget: compact({ defaultUsd: num(env.MPF_BUDGET_USD) }),
     server: compact({ port: num(env.MPF_PORT), host: env.MPF_HOST }),

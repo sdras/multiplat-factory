@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import { LlmSettings, LlmSettingsInput } from './llm.ts'
 import { Id, IsoDate, Platform, Target } from './common.ts'
 
 export const RunStatus = z.enum([
@@ -26,12 +27,22 @@ export const ModelConfig = z.object({
 })
 export type ModelConfig = z.infer<typeof ModelConfig>
 
+/** Per-role model names a config may set; roles left unset take the provider's defaults. */
+export const ModelOverrides = z.object({
+  generate: z.string().optional(),
+  critic: z.string().optional(),
+  cheap: z.string().optional(),
+})
+export type ModelOverrides = z.infer<typeof ModelOverrides>
+
 export const RunOptions = z.object({
   parentRunId: Id.optional(),
   revisionInstructions: z.array(z.object({ stageId: z.string(), text: z.string() })).default([]),
   coreMode: CoreMode.default('auto'),
   budgetUsd: z.number().positive().max(500).default(30),
   models: ModelConfig.prefault({}),
+  /** Which model provider the run's workers use (no secrets; keys come from the environment). */
+  llm: LlmSettings.prefault({}),
   effort: z
     .object({
       generate: Effort.default('xhigh'),
@@ -80,11 +91,17 @@ export const Run = z.object({
 })
 export type Run = z.infer<typeof Run>
 
-/** What a client sends to create a run. Everything else is derived. */
+/**
+ * What a client sends to create a run. Everything else is derived. `models` and `llm` stay as
+ * partial as they were sent, so the provider's defaults can fill the roles a client did not name
+ * (a parsed partial `ModelConfig` would already carry Claude's names).
+ */
 export const CreateRunInput = z.object({
   source: RunSource.pick({ locator: true, commit: true }),
   targets: z.array(Target).min(1),
-  options: RunOptions.partial().optional(),
+  options: RunOptions.partial()
+    .extend({ models: ModelOverrides.optional(), llm: LlmSettingsInput.optional() })
+    .optional(),
 })
 /** Input type: nested option objects may be partial; defaults fill the rest. */
 export type CreateRunInput = z.input<typeof CreateRunInput>

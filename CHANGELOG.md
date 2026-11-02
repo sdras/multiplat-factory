@@ -5,6 +5,29 @@ before publishing it.
 
 ## [Unreleased]
 
+### Added
+
+- Workers can run on models other than Claude. `llm.provider` in `~/.mpf/config.json` (or
+  `mpf port --provider`) picks `openai`, `gemini`, `openrouter`, `ollama`, or a `custom`
+  OpenAI-compatible server (`--base-url`); keys come from `OPENAI_API_KEY`, `GEMINI_API_KEY`,
+  `OPENROUTER_API_KEY`, or `MPF_LLM_API_KEY`. Claude stays the default when the machine has a
+  Claude Code login or `ANTHROPIC_API_KEY`. `mpf doctor` reports the provider it will use, checks
+  the key, confirms the models against the server's catalog, and names models it cannot price.
+  Verified on Ollama with `qwen2.5-coder:7b`: the provider probe passes and a run reaches the
+  spec stage. Models that write tool calls as text instead of native calls are understood.
+- `scripts/spike-provider.ts` proves a provider works before a run spends money on it.
+- Weak or slow models are refused before a run's first worker. Claude, full-size GPT-5 and
+  o-series, and Gemini Pro models pass on their name; any other model on a non-Claude provider is
+  probed with a short tool task, and one that fails it, answers under 10 output tokens per second,
+  or has fewer than 30B parameters by its name stops the run with a `model-unsuitable` error.
+  `mpf doctor --probe` runs the same check; `llm.probe: false` skips it.
+
+### Fixed
+
+- Analysis and review workers (spec, behaviors, plan, critique) can no longer write files. The
+  sandbox denies the write tools for them on every backend; a small local model spent a whole
+  attempt editing the source copy under the run folder.
+
 ## [0.1.1] - 2026-11-01
 
 ### Fixed

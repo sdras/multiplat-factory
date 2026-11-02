@@ -80,7 +80,7 @@ async function copy(text: string, id: string) {
           </span>
         </div>
         <div class="readout">
-          <span class="k">Claude backend</span><span class="v mono">{{ report.llmBackend }}</span>
+          <span class="k">Model backend</span><span class="v mono">{{ report.llmBackend }}</span>
         </div>
         <div class="readout">
           <span class="k">Checked</span><span class="v">{{ checkedAgo }}</span>

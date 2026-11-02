@@ -556,7 +556,7 @@ async function submit() {
                 :hollow="!available.has(t.id)"
               />
             </span>
-            <span class="k">Claude</span
+            <span class="k">Models</span
             ><span>{{
               doctor.llmBackend === 'none' ? 'no backend found' : doctor.llmBackend
             }}</span>

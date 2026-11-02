@@ -1,7 +1,8 @@
 import Anthropic from '@anthropic-ai/sdk'
 import { zodOutputFormat } from '@anthropic-ai/sdk/helpers/zod'
-import { estimateCostUsd, type Effort } from '@mpf/core'
+import { estimateCostUsd, resolveLlm, type Effort, type LlmSettings } from '@mpf/core'
 import type { z } from 'zod'
+import { apiStructuredCall } from './api/index.ts'
 
 let client: Anthropic | undefined
 
@@ -19,6 +20,8 @@ export interface StructuredCallOptions<T extends z.ZodType> {
   schema: T
   effort?: Effort
   maxTokens?: number
+  /** Which provider answers (a run's `options.llm`); unset resolves from the environment. */
+  llm?: Partial<LlmSettings>
 }
 
 export interface StructuredCallResult<T> {
@@ -34,6 +37,8 @@ export interface StructuredCallResult<T> {
 export async function structuredCall<T extends z.ZodType>(
   opts: StructuredCallOptions<T>,
 ): Promise<StructuredCallResult<z.infer<T>>> {
+  const llm = resolveLlm(opts.llm)
+  if (llm.backend === 'openai-compatible') return apiStructuredCall(opts, llm)
   const response = await anthropic().messages.parse({
     model: opts.model,
     max_tokens: opts.maxTokens ?? 16000,

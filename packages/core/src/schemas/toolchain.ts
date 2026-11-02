@@ -27,6 +27,6 @@ export const ToolchainReport = z.object({
   checks: z.array(ToolchainCheck),
   /** Derived: which targets can run on this host right now. */
   availableTargets: z.array(z.enum(['web', 'ios', 'android'])),
-  llmBackend: z.enum(['messages', 'agent-sdk', 'none']),
+  llmBackend: z.enum(['messages', 'agent-sdk', 'openai-compatible', 'none']),
 })
 export type ToolchainReport = z.infer<typeof ToolchainReport>

@@ -12,6 +12,7 @@ export * from './verdict.ts'
 export * from './testresult.ts'
 export * from './toolchain.ts'
 export * from './config.ts'
+export * from './llm.ts'
 export * from './inventory.ts'
 export * from './corevectors.ts'
 

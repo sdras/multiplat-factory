@@ -316,7 +316,7 @@ async function saveDirection() {
           <details>
             <summary>Model &amp; usage</summary>
             <p>
-              {{ state?.run.options.models.cheap }}<br />Uses your existing Claude connection.<br />{{
+              {{ state?.run.options.models.cheap }}<br />Uses the run's model provider.<br />{{
                 money(state?.run.costUsd ?? 0)
               }}
               used of {{ money(state?.run.options.budgetUsd ?? 0) }}.<br />Up to

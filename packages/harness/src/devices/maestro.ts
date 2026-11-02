@@ -22,6 +22,8 @@ export async function maestroTools(
     env,
     platform: process.platform,
     toolchain: config.toolchain,
+    llm: config.llm,
+    models: config.models,
   })
   const merged: NodeJS.ProcessEnv = { ...env }
   if (javaHome) {

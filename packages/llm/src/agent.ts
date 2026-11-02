@@ -1,6 +1,7 @@
 import { query, type Options, type SDKMessage } from '@anthropic-ai/claude-agent-sdk'
-import { toJsonSchema, type Effort } from '@mpf/core'
+import { resolveLlm, toJsonSchema, type Effort, type LlmSettings } from '@mpf/core'
 import type { z } from 'zod'
+import { runApiAgent } from './api/index.ts'
 import { decide, defaultPolicy, type PermissionPolicy } from './permissions.ts'
 
 export type AgentEvent =
@@ -32,6 +33,8 @@ export interface AgentRunOptions {
   env?: Record<string, string | undefined>
   onEvent?: (event: AgentEvent) => void
   policy?: PermissionPolicy
+  /** Which provider runs this worker (a run's `options.llm`); unset resolves from the environment. */
+  llm?: Partial<LlmSettings>
 }
 
 export interface AgentRunResult {
@@ -55,11 +58,14 @@ export interface AgentRunResult {
 }
 
 /**
- * Runs one Claude Agent SDK session as a factory worker: sandboxed to its workspace,
- * budget-capped, with every tool call mirrored to `onEvent` for the dashboard.
- * Auth comes from ANTHROPIC_API_KEY or the user's Claude Code login.
+ * Runs one agent session as a factory worker: sandboxed to its workspace, budget-capped, with
+ * every tool call mirrored to `onEvent` for the dashboard. The provider comes from `opts.llm`:
+ * Claude runs through the Agent SDK (ANTHROPIC_API_KEY or the user's Claude Code login); every
+ * other provider runs through the factory's own loop over the OpenAI-compatible protocol.
  */
 export async function runAgent(opts: AgentRunOptions): Promise<AgentRunResult> {
+  const llm = resolveLlm(opts.llm, { ...process.env, ...opts.env } as NodeJS.ProcessEnv)
+  if (llm.backend === 'openai-compatible') return runApiAgent(opts, llm)
   const policy = opts.policy ?? {
     ...defaultPolicy(opts.cwd, opts.readDirs),
     bashAllow: opts.bashAllow ?? [],

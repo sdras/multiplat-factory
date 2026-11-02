@@ -10,11 +10,13 @@ import {
 } from '../src/toolchain/checks/playwright.ts'
 import type { CheckContext } from '../src/toolchain/types.ts'
 
-const toolchain = MpfConfig.parse({}).toolchain
+const { toolchain, llm, models } = MpfConfig.parse({})
 const ctx = (env: NodeJS.ProcessEnv): CheckContext => ({
   env,
   platform: process.platform,
   toolchain,
+  llm,
+  models,
 })
 
 /** A browser directory the way `playwright install` leaves it: a folder plus the completion marker. */

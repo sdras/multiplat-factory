@@ -23,7 +23,13 @@ export async function androidTools(
   env: NodeJS.ProcessEnv = process.env,
   opts: { gradleVersion?: string } = {},
 ): Promise<AndroidTools | undefined> {
-  const ctx = { env, platform: process.platform, toolchain: config.toolchain }
+  const ctx = {
+    env,
+    platform: process.platform,
+    toolchain: config.toolchain,
+    llm: config.llm,
+    models: config.models,
+  }
   const brewPrefix =
     process.platform === 'darwin'
       ? (

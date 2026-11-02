@@ -409,6 +409,9 @@ importers:
       '@mpf/harness':
         specifier: workspace:*
         version: link:../../packages/harness
+      '@mpf/llm':
+        specifier: workspace:*
+        version: link:../../packages/llm
       '@mpf/orchestrator':
         specifier: workspace:*
         version: link:../../packages/orchestrator
