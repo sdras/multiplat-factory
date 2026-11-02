@@ -1,6 +1,6 @@
 {
   "name": "multiplat-factory",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Port an app from web, iOS, or Android to the other platforms.",
   "license": "Apache-2.0",
   "type": "module",

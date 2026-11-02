@@ -33,7 +33,7 @@ async function step(title: string, command: string, args: string[], cwd = root):
 }
 
 await step('dashboard', 'pnpm', ['--filter', '@mpf/dashboard', 'build'])
-await step('cli bundle', 'pnpm', ['--filter', 'multiplat-factory', 'build'])
+await step('cli bundle', 'pnpm', ['--filter', './apps/cli', 'build'])
 await step('smoke', 'node', [join(cli, 'dist', 'main.js'), '--help'])
 rmSync(out, { recursive: true, force: true })
 mkdirSync(out, { recursive: true })
