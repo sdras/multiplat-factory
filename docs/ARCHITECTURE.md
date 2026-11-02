@@ -24,7 +24,7 @@ Each item was checked against the code in the paths named.
 - **Fixtures.** `fixtures/manifest.json` pins ten public repos and lists five in-house fixtures: `web-vanilla-counter`, `web-vanilla-cart`, `ios-uikit-notes`, `ios-objc-notes`, `android-views-java-notes`. There is no `web-svelte-notes`, and no personal project is pinned.
 - **Verification.** CI runs the fake pipeline with `--fake --yes`; there is no `--fake-llm`, no `--fixture-mode`, no `MPF_RECORD` replay (the `AgentRecorder` only appends JSONL), no nightly real-LLM job, and no "Run self-test" button. CI does have jobs the plan did not list: the four web scaffold flavors with a Playwright flow, the in-house mobile fixtures building and passing their own tests, and the public fixture matrix detection check.
 - **Doctor checks** are node, git, pm, llm, xcode, java, android, gradle, rust, and maestro. There is no Playwright Chromium check; the observe stage degrades to "unverified" without the browser.
-- **Publishing.** `pnpm tsx scripts/release.ts` builds and packs `@multiplat/factory` (a tsup bundle plus the static dashboard copied by `apps/cli/scripts/bundle-dashboard.mjs`); `--publish` runs `pnpm publish`. There are no `release` or `test:e2e` root scripts, and the package is not on npm yet.
+- **Publishing.** `pnpm tsx scripts/release.ts` builds and packs `multiplat-factory` (a tsup bundle plus the static dashboard copied by `apps/cli/scripts/bundle-dashboard.mjs`); `--publish` runs `pnpm publish`. There are no `release` or `test:e2e` root scripts, and the package is not on npm yet.
 - **File placement.** The worker spawner is `packages/llm/src/agent.ts` plus `packages/analyzer/src/worker.ts`, not `packages/orchestrator/src/worker.ts`; the orchestrator is split into `graph.ts`, `machine.ts`, and `runner.ts`.
 
 ---
@@ -40,7 +40,7 @@ The repository was empty when this was written.
 - **For anyone, not for one person.** Accepts any reasonable app: web in React, Vue, Svelte, Angular, Solid, vanilla, SPA or SSR; iOS in SwiftUI or UIKit, Swift or Objective-C, Xcode or SwiftPM; Android in Compose or XML Views, Kotlin or Java, single or multi-module. Cross-platform sources (Flutter, React Native, Capacitor) are recognized and refused with a message. All platform knowledge lives in pluggable source and target adapters behind a framework-neutral AppSpec and BehaviorSpec.
 - **No machine-specific code.** Toolchains are discovered through `DEVELOPER_DIR` or `xcode-select`, `xcrun`, `JAVA_HOME`, `ANDROID_HOME`, PATH, with overrides in `~/.mpf/config.json` or `mpf.config.ts`. `mpf doctor` reports gaps with install hints per package manager; `mpf setup` asks before installing. Missing toolchains skip a target with a plain reason (iOS needs macOS + Xcode; web and Android also run on Linux).
 - **Bring your own credentials and budget.** `ANTHROPIC_API_KEY` or Claude Code login. Models configurable with defaults (`claude-opus-5` for generation and critic, `claude-sonnet-5` for cheap sub-tasks). Per-run budget cap with a visible meter.
-- **Installable and local-first.** `npm i -g @multiplat/factory` or `npx`, run data under `~/.mpf/` (honors `$MPF_HOME`, then `$XDG_DATA_HOME/mpf`), with interfaces (`RunStore`, `AgentFn`, `StageRunnerRegistry`, `RunEventBus`) that leave a clean seam for a hosted or CI mode later (`docs/HOSTED-SEAM.md`).
+- **Installable and local-first.** `npm i -g multiplat-factory` or `npx`, run data under `~/.mpf/` (honors `$MPF_HOME`, then `$XDG_DATA_HOME/mpf`), with interfaces (`RunStore`, `AgentFn`, `StageRunnerRegistry`, `RunEventBus`) that leave a clean seam for a hosted or CI mode later (`docs/HOSTED-SEAM.md`).
 - **Nobody's own projects shape the product.** Fixtures are pinned by git URL + commit like any other fixture, or written in-house under `fixtures/inhouse`, and are never the basis for templates, prompts, or defaults.
 
 ### Decisions already made
@@ -81,7 +81,7 @@ multiplat-factory/
   .prettierrc  .nvmrc  .gitignore  .editorconfig  CLAUDE.md  README.md  LICENSE
   .github/workflows/ci.yml
   apps/
-    cli/          @multiplat/factory  bin `mpf` (published; tsup bundle plus the static dashboard in dist/dashboard)
+    cli/          multiplat-factory  bin `mpf` (published; tsup bundle plus the static dashboard in dist/dashboard)
     server/       @mpf/server         Hono HTTP + SSE API, run daemon
     dashboard/    @mpf/dashboard      Nuxt 4, ssr:false, `nuxt generate` -> static
   packages/
@@ -363,7 +363,7 @@ nvm install 24   # node:sqlite is unflagged from 22.13
 | M6  | WASM core: Rust template, ABI, bindings, vectors, parity matrix, playground                                                                                                                                | shopping-cart-class fixture -> `mpf_core.wasm` passes vectors on all hosts | WasmKit 0.4 on simulator with Swift 6.3; Chicory in JVM tests                                    |
 | M7  | iOS-source direction: Xcode and SwiftPM adapters, headless build, Maestro tour, SwiftPM vector harness; `ios-uikit-notes` and `ios-objc-notes` in-house fixtures                                           | an iOS fixture -> web + android with a `PORT.md` resembling the reference  | Arbitrary Xcode builds, SPM resolution time                                                      |
 | M8  | Android-source direction: gradle adapter (Views + Compose, Kotlin + Java, multi-module); `android-views-java-notes` fixture                                                                                | architecture-samples `views` + `main` -> web + ios                         | Multi-module inventory                                                                           |
-| M9  | Web target polish (react, vue, svelte, vanilla); fixture matrix CI; `npm publish` of `@multiplat/factory`; `npx` path; `docs/HOSTED-SEAM.md`                                                               | `npx @multiplat/factory doctor` on a clean machine                         | Distribution size with bundled dashboard                                                         |
+| M9  | Web target polish (react, vue, svelte, vanilla); fixture matrix CI; `npm publish` of `multiplat-factory`; `npx` path; `docs/HOSTED-SEAM.md`                                                                | `npx multiplat-factory doctor` on a clean machine                          | Distribution size with bundled dashboard                                                         |
 
 Status: M1 through M6 are done. M7 and M8 are started: `ios-xcode` and `android-gradle` build the source for the simulator or emulator, the observe stage walks behaviors on it, and the source's own suite runs as the `source` result; the native vector harnesses are still pending (the core workers run the source's interpreter instead). Of M9, the four web flavors, the fixture matrix in CI, the release script, and `docs/HOSTED-SEAM.md` exist; the package is not published yet.
 
@@ -388,7 +388,7 @@ Spikes before their milestone: Agent SDK daemon (M1, `scripts/spike-agent-sdk.ts
 
 - `.gitignore`: `node_modules/`, `dist/`, `dist-release/`, `.nuxt/`, `.output/`, `.turbo/`, `coverage/`, `*.tsbuildinfo`, `*.log`, `.env*`, `fixtures/.cache/`, `**/DerivedData/`, `**/.gradle/`, `**/build/`, Rust `**/target/` with `!packages/adapters/src/target/` re-included (ESLint honors `.gitignore`), `templates/**/*.xcodeproj` and `fixtures/inhouse/**/*.xcodeproj` (XcodeGen output), `**/local.properties`, editor and OS files.
 - `CLAUDE.md`: what the product is; commands; package map and dependency direction; invariants (orchestrator deterministic; schemas zod-first in `core`; adapters are the only home for platform knowledge; no hardcoded machine paths; no user-specific defaults; every LLM call goes through `@mpf/llm`; budgets always enforced; run data under `~/.mpf`; events are the source of truth); how to add an adapter (`docs/ADAPTERS.md`); style; gotchas that grew as spikes landed; status per milestone.
-- Root scripts: `dev` (turbo: server + dashboard), `build`, `test`, `test:watch`, `typecheck`, `lint`, `format`, `format:check`, `mpf` (`tsx apps/cli/src/main.ts`), `doctor`, `fixtures:sync`. Release is `pnpm tsx scripts/release.ts [--publish]`. `apps/cli/package.json`: name `@multiplat/factory`, `bin: { mpf }`, `engines.node >= 22.13`, `build: tsup && node scripts/bundle-dashboard.mjs`.
+- Root scripts: `dev` (turbo: server + dashboard), `build`, `test`, `test:watch`, `typecheck`, `lint`, `format`, `format:check`, `mpf` (`tsx apps/cli/src/main.ts`), `doctor`, `fixtures:sync`. Release is `pnpm tsx scripts/release.ts [--publish]`. `apps/cli/package.json`: name `multiplat-factory`, `bin: { mpf }`, `engines.node >= 22.13`, `build: tsup && node scripts/bundle-dashboard.mjs`.
 
 ### Critical files
 

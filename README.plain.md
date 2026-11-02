@@ -48,7 +48,7 @@ iOS targets run only on macOS. Web and Android targets also run on Linux.
 From npm, once the package is published:
 
 ```bash
-npm i -g @multiplat/factory
+npm i -g multiplat-factory
 mpf doctor
 ```
 
@@ -266,14 +266,14 @@ To add a platform or framework, implement `SourceAdapter` or `TargetAdapter` fro
 
 ## Releasing and publishing
 
-The published package is `@multiplat/factory`. It is built from `apps/cli`, with every `@mpf/*` package inlined and the static dashboard copied next to the binary. Its npm page is `apps/cli/README.md`.
+The published package is `multiplat-factory`. It is built from `apps/cli`, with every `@mpf/*` package inlined and the static dashboard copied next to the binary. Its npm page is `apps/cli/README.md`.
 
 1. Bump the version in `apps/cli/package.json` and in `meta.version` in `apps/cli/src/main.ts`.
 2. Build and pack: `pnpm tsx scripts/release.ts`. It builds the dashboard, bundles the CLI with tsup, runs `mpf --help` from the bundle, and packs the tarball into `dist-release/`. It prints the tarball's contents (about 1.2 MB, with source maps).
 3. Try the tarball in a clean project: `mkdir /tmp/try && cd /tmp/try && npm init -y && npm i <repo>/dist-release/multiplat-factory-<version>.tgz && npx mpf doctor && npx mpf serve`.
-4. Log in to npm and check that you can publish to the scope: `npm login`, then `npm access list packages multiplat`. If the `multiplat` org is not yours, create it on npmjs.com or rename the package.
+4. Log in to npm with `npm login` and confirm it with `npm whoami`. The name `multiplat-factory` is unscoped, so no organization is needed.
 5. Publish: `pnpm tsx scripts/release.ts --publish`. It rebuilds, then runs `pnpm publish --access public --no-git-checks` from `apps/cli`. With two-factor auth on, npm asks for a one-time code.
-6. Check from another machine: `npm view @multiplat/factory version` and `npx @multiplat/factory doctor`.
+6. Check from another machine: `npm view multiplat-factory version` and `npx multiplat-factory doctor`.
 
 The package metadata and this README link to the GitHub repository. Make it public before publishing, or expect dead links.
 

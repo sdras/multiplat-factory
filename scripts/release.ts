@@ -3,7 +3,7 @@
  * `npm pack` for inspection. Publishing is a separate, explicit step.
  *
  *   pnpm tsx scripts/release.ts             # build + pack into dist-release/, print the tarball contents
- *   pnpm tsx scripts/release.ts --publish   # also `pnpm publish` (needs npm login and the @multiplat scope)
+ *   pnpm tsx scripts/release.ts --publish   # also `pnpm publish` (needs npm login)
  */
 import { existsSync, mkdirSync, readdirSync, rmSync, statSync } from 'node:fs'
 import { dirname, join } from 'pathe'
@@ -33,7 +33,7 @@ async function step(title: string, command: string, args: string[], cwd = root):
 }
 
 await step('dashboard', 'pnpm', ['--filter', '@mpf/dashboard', 'build'])
-await step('cli bundle', 'pnpm', ['--filter', '@multiplat/factory', 'build'])
+await step('cli bundle', 'pnpm', ['--filter', 'multiplat-factory', 'build'])
 await step('smoke', 'node', [join(cli, 'dist', 'main.js'), '--help'])
 rmSync(out, { recursive: true, force: true })
 mkdirSync(out, { recursive: true })

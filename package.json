@@ -1,5 +1,5 @@
 {
-  "name": "multiplat-factory",
+  "name": "multiplat-factory-workspace",
   "private": true,
   "version": "0.1.0",
   "description": "Port an app from web, iOS, or Android to the other platforms, with an orchestrator, verification harness, critic, and live dashboard.",

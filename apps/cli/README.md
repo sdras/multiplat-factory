@@ -1,4 +1,4 @@
-# @multiplat/factory
+# multiplat-factory
 
 Port an app from one platform (web, iOS, Android) to the others. Give the factory a source
 project, pick the targets, and it analyzes the app, verifies its behaviors on the original (a dev
@@ -12,7 +12,7 @@ parity tests.
 ## Quick start
 
 ```bash
-npm i -g @multiplat/factory   # or: npx @multiplat/factory doctor
+npm i -g multiplat-factory   # or: npx multiplat-factory doctor
 mpf doctor                     # what toolchains are present, what each gap disables (--json)
 mpf setup                      # install what doctor reports missing, asking before each step (--yes, --dry-run)
 mpf serve                      # the dashboard and API on http://127.0.0.1:4310 (--port, --host)

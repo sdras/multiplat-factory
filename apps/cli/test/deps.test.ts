@@ -12,7 +12,7 @@ const read = (rel: string) =>
 
 /**
  * tsup inlines every @mpf/* package into the published bin, so their third-party runtime
- * dependencies must be declared by the CLI package or `npm i -g @multiplat/factory` breaks.
+ * dependencies must be declared by the CLI package or `npm i -g multiplat-factory` breaks.
  */
 describe('published CLI dependencies', () => {
   it('declare every third-party runtime dependency of the bundled workspace packages', () => {
