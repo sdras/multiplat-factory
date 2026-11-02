@@ -36,6 +36,7 @@
   ],
   "scripts": {
     "build": "tsup && node scripts/bundle-dashboard.mjs",
+    "prepublishOnly": "pnpm --filter @mpf/dashboard build && pnpm build && node dist/main.js --help",
     "typecheck": "tsc -p tsconfig.json",
     "test": "vitest run"
   },

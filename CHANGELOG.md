@@ -1,7 +1,7 @@
 # Changelog
 
 Notable changes to the `multiplat-factory` package, newest first. Add a section for each version
-before running `pnpm release`; the release script refuses to publish a version that has no entry.
+before publishing it.
 
 ## [Unreleased]
 
@@ -9,11 +9,11 @@ before running `pnpm release`; the release script refuses to publish a version t
 
 ### Fixed
 
-- A naming collision between the monorepo root and the published package. Both `package.json`
-  files are named `multiplat-factory`, so a publish resolved by name picked the workspace root and
-  0.1.0 shipped the source tree without a runnable `mpf` command. The release script now builds
-  the CLI by path (`pnpm --filter ./apps/cli`), publishes only the packed tarball from `apps/cli`,
-  and the root refuses `npm publish` outright. Use 0.1.1 or later.
+- A naming collision between the monorepo root and the published package. Both were named
+  `multiplat-factory`, so a publish from the root shipped the workspace instead of the CLI, and
+  0.1.0 contains the source tree without a runnable `mpf` command. The root is now
+  `multiplat-factory-workspace`, and `pnpm release` publishes the CLI from `apps/cli` after
+  building it. Use 0.1.1 or later.
 
 ## [0.1.0] - 2026-11-01
 

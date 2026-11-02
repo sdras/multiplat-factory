@@ -39,10 +39,10 @@ npm i -g multiplat-factory
 mpf doctor
 ```
 
-From a packed tarball (what the release script produces, see [Releasing and publishing](#releasing-and-publishing)):
+From a packed tarball (`pnpm --filter multiplat-factory run prepublishOnly` builds the CLI, then `pnpm --filter multiplat-factory pack` writes `apps/cli/multiplat-factory-<version>.tgz`; see [Releasing and publishing](#releasing-and-publishing)):
 
 ```bash
-npm i -g dist-release/multiplat-factory-0.1.0.tgz
+npm i -g apps/cli/multiplat-factory-0.1.1.tgz
 mpf doctor
 ```
 
@@ -266,17 +266,17 @@ To add a platform or framework, implement `SourceAdapter` or `TargetAdapter` fro
 
 ## Releasing and publishing
 
-The published package is `multiplat-factory`. It is built from `apps/cli`, with every `@mpf/*` package bundled in and the static dashboard copied next to it. Its npm page is `apps/cli/README.md`. The monorepo root has the same name but is not the package; `npm publish` from the root prints a reminder and stops.
+The published package is `multiplat-factory`. It is built from `apps/cli`, with every `@mpf/*` package bundled in and the static dashboard copied next to it. Its npm page is `apps/cli/README.md`. The monorepo root is a separate package, `multiplat-factory-workspace`, and is never published.
 
 A release is three steps:
 
 1. **Bump the version** in `apps/cli/package.json`. That is the version npm gets; the CLI reads it from there at run time.
-2. **Add a section to `CHANGELOG.md`** headed `## [<version>] - <date>` with what changed. The release script refuses to publish a version that has no section.
-3. **Run `pnpm release`.** It builds the dashboard, bundles the CLI, runs `mpf --help` from the bundle, packs the tarball into `dist-release/`, lists its contents, and publishes that tarball with `npm publish`. npm asks for your two-factor code in the terminal.
+2. **Add a section to `CHANGELOG.md`** headed `## [<version>] - <date>` with what changed, and commit both.
+3. **Run `pnpm release`.** It is `pnpm --filter multiplat-factory publish`: the CLI's `prepublishOnly` script builds the dashboard, bundles the CLI, and runs `mpf --help` from the bundle, then pnpm resolves the `catalog:` and `workspace:` versions, packs, and publishes. npm asks for your two-factor code in the terminal. pnpm refuses to publish from a branch other than `main` or with uncommitted changes.
 
 Then check from another machine with `npm view multiplat-factory version` and `npx multiplat-factory doctor`.
 
-To build and inspect without publishing, run `pnpm tsx scripts/release.ts`; it stops after packing and prints an `npm i -g` line for trying the tarball locally. A version number can never be reused on npm, so a bad release gets a deprecation notice (`npm deprecate multiplat-factory@<version> "<reason>"`) and a fixed version right after it.
+Always publish with pnpm, never `npm publish` from `apps/cli`: npm leaves the `catalog:` versions unresolved and the package would not install. To build and inspect without publishing, run `pnpm release --dry-run`; it does everything but the upload and lists the tarball's contents. A version number can never be reused on npm, so a bad release gets a deprecation notice (`npm deprecate multiplat-factory@<version> "<reason>"`) and a fixed version right after it.
 
 ## Layout
 

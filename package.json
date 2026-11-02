@@ -1,5 +1,5 @@
 {
-  "name": "multiplat-factory",
+  "name": "multiplat-factory-workspace",
   "private": false,
   "version": "0.1.1",
   "description": "Port an app from web, iOS, or Android to the other platforms, with an orchestrator, verification harness, critic, and live dashboard.",
@@ -20,7 +20,7 @@
     "mpf": "tsx apps/cli/src/main.ts",
     "doctor": "tsx apps/cli/src/main.ts doctor",
     "fixtures:sync": "tsx scripts/fixtures-sync.ts",
-    "release": "tsx scripts/release.ts --publish"
+    "release": "pnpm --filter multiplat-factory publish"
   },
   "devDependencies": {
     "@mpf/adapters": "workspace:*",
