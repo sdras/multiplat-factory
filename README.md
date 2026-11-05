@@ -47,7 +47,7 @@ mpf doctor
 From a packed tarball (`pnpm --filter multiplat-factory run prepublishOnly` builds the CLI, then `pnpm --filter multiplat-factory pack` writes `apps/cli/multiplat-factory-<version>.tgz`; see [Releasing and publishing](#releasing-and-publishing)):
 
 ```bash
-npm i -g apps/cli/multiplat-factory-0.1.1.tgz
+npm i -g apps/cli/multiplat-factory-0.2.0.tgz
 mpf doctor
 ```
 

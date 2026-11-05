@@ -20,12 +20,14 @@ mpf port ./my-app --to ios,android --budget 30
 mpf runs                       # runs so far; `mpf status <runId>` for one
 ```
 
-Requires Node 22.13 or newer. The factory uses your own Claude credentials: `ANTHROPIC_API_KEY`,
-or the Claude Code login on this machine. iOS targets need macOS with Xcode; web and Android
+Requires Node 22.13 or newer. The factory uses your own model credentials: Claude by default
+(`ANTHROPIC_API_KEY` or the Claude Code login on this machine), or OpenAI, Gemini, OpenRouter,
+Ollama, or any OpenAI-compatible server through `llm.provider` in the config or
+`mpf port --provider`. iOS targets need macOS with Xcode; web and Android
 targets also run on Linux. A target whose toolchain is missing is skipped with a plain reason.
 
 The dashboard runs on your machine next to the daemon, because the factory needs this machine's
-simulators, emulators, toolchains, and Claude login. There is nothing to host. Commands start an
+simulators, emulators, toolchains, and model credentials. There is nothing to host. Commands start an
 embedded daemon for their own lifetime when `mpf serve` is not running.
 
 ## Porting

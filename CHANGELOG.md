@@ -5,6 +5,8 @@ before publishing it.
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-11-01
+
 ### Added
 
 - Workers can run on models other than Claude. `llm.provider` in `~/.mpf/config.json` (or
